@@ -82,4 +82,7 @@ const ProductSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+ProductSchema.index({ createdAt: -1 });
+ProductSchema.index({ active: 1, customerVisible: 1, name: 1 });
+
 export default mongoose.models.Product || mongoose.model('Product', ProductSchema);

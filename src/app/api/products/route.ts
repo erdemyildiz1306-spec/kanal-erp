@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { deleteProductsWithCleanup } from '@/lib/product-delete';
-import { repairOrphanVariantWarehouseStockBatch } from '@/lib/warehouse-stock';
 
 function normalizeTyAttributesFromClient(data: unknown): Array<{
   attributeId: number;
@@ -92,19 +91,7 @@ async function skuBarcodeCollision(
 export async function GET() {
   try {
     await connectToDatabase();
-    let products = await Product.find({}).sort({ createdAt: -1 });
-
-    const variantIds = products
-      .filter((p) => p.hasVariants && Array.isArray(p.variants) && p.variants.length)
-      .map((p) => String(p._id));
-
-    if (variantIds.length) {
-      const repaired = await repairOrphanVariantWarehouseStockBatch(variantIds);
-      if (repaired > 0) {
-        products = await Product.find({}).sort({ createdAt: -1 });
-      }
-    }
-
+    const products = await Product.find({}).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, products });
   } catch (error: unknown) {
     console.error('GET Products Error:', error);

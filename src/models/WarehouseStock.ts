@@ -17,6 +17,7 @@ WarehouseStockSchema.index(
   { warehouseId: 1, productId: 1, variantSku: 1 },
   { unique: true }
 );
+WarehouseStockSchema.index({ barcode: 1, warehouseId: 1 });
 
 export default mongoose.models.WarehouseStock ||
   mongoose.model('WarehouseStock', WarehouseStockSchema);

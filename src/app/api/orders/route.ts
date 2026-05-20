@@ -27,8 +27,13 @@ export async function GET(request: Request) {
     if (platform && platform !== 'Tümü') query.platform = platform.toLowerCase();
     if (status && status !== 'Tümü') query.status = status;
 
-    const orders = await Order.find(query).sort({ createdAt: -1 });
-    return NextResponse.json({ success: true, orders });
+    const limit = Math.min(
+      2000,
+      Math.max(1, parseInt(searchParams.get('limit') || '500', 10) || 500)
+    );
+
+    const orders = await Order.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+    return NextResponse.json({ success: true, orders, limit });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';
     console.error('GET Orders Error:', error);

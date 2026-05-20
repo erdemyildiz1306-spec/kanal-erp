@@ -40,7 +40,7 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
       missed.push(String(line.sku || line.barcode || 'satır'));
       continue;
     }
-    const match = resolveVariantMatch(raw, line.sku, line.barcode);
+    const match = resolveVariantMatch(raw, line.sku, line.barcode, line.productName);
     const qty = Math.max(1, Math.floor(Number(line.quantity) || 1));
     await adjustProductStock({
       match,
@@ -49,6 +49,7 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
       reference: `${ref}:restore`,
       sku: line.sku,
       barcode: line.barcode,
+      productName: line.productName,
     });
     restored += qty;
   }

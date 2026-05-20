@@ -73,6 +73,17 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (
+    session.role !== 'admin' &&
+    ((pathname === '/api/settings' && request.method === 'PUT') ||
+      pathname === '/api/backup')
+  ) {
+    return NextResponse.json(
+      { success: false, error: 'Bu işlem yalnızca yöneticiye açıktır.' },
+      { status: 403 }
+    );
+  }
+
   return NextResponse.next();
 }
 

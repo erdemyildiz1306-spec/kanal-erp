@@ -55,24 +55,15 @@ export default function Home() {
   useEffect(() => {
     const refresh = async () => {
       try {
-        const [dashRes, ordRes] = await Promise.all([fetch("/api/dashboard"), fetch("/api/orders")]);
+        const dashRes = await fetch("/api/dashboard");
         const dash = await dashRes.json();
-        const ord = await ordRes.json();
         if (dash.success) {
           setStats(dash.stats);
           setBar(dash.charts.bar);
           setDoughnut(dash.charts.doughnut);
-        }
-        if (ord.success && Array.isArray(ord.orders)) {
-          setRecentOrders(
-            ord.orders.slice(0, 6).map((o: Record<string, unknown>) => ({
-              orderNumber: String(o.orderNumber ?? ""),
-              platform: String(o.platform ?? ""),
-              customerName: String(o.customerName ?? ""),
-              totalAmount: Number(o.totalAmount) || 0,
-              status: String(o.status ?? ""),
-            }))
-          );
+          if (Array.isArray(dash.recentOrders)) {
+            setRecentOrders(dash.recentOrders);
+          }
         }
       } finally {
         setLoading(false);

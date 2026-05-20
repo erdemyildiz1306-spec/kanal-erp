@@ -89,6 +89,12 @@ export async function GET() {
     const tyPct = channelTotal > 0 ? Math.round((tyTotal / channelTotal) * 100) : 0;
     const webPct = channelTotal > 0 ? 100 - tyPct : 0;
 
+    const recentOrders = await Order.find({ status: { $ne: 'İptal Edildi' } })
+      .sort({ createdAt: -1 })
+      .limit(6)
+      .select('orderNumber platform customerName totalAmount status createdAt')
+      .lean();
+
     return NextResponse.json({
       success: true,
       stats: {
@@ -107,6 +113,13 @@ export async function GET() {
           amounts: [tyTotal, webTotal],
         },
       },
+      recentOrders: recentOrders.map((o) => ({
+        orderNumber: String(o.orderNumber ?? ''),
+        platform: String(o.platform ?? ''),
+        customerName: String(o.customerName ?? ''),
+        totalAmount: Number(o.totalAmount) || 0,
+        status: String(o.status ?? ''),
+      })),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';

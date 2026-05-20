@@ -16,9 +16,15 @@ export default function OrderAutoSync() {
         const res = await fetch("/api/trendyol/sync-orders", { cache: "no-store" });
         const data = await res.json();
         if (data.success) {
-          window.dispatchEvent(
-            new CustomEvent("erp-orders-synced", { detail: data })
-          );
+          const changed =
+            (Number(data.count) || 0) > 0 ||
+            (Number(data.stockAdjusted) || 0) > 0 ||
+            (Number(data.stockRestored) || 0) > 0;
+          if (changed) {
+            window.dispatchEvent(
+              new CustomEvent("erp-orders-synced", { detail: data })
+            );
+          }
         }
       } catch {
         /* sessiz — manuel «Trendyol'dan Çek» yedek kalır */

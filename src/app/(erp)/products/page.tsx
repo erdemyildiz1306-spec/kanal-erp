@@ -495,9 +495,6 @@ export default function ProductsPage() {
         }
       })
       .catch(() => {});
-    const onSync = () => void refreshProductsQuiet();
-    window.addEventListener("erp-orders-synced", onSync);
-    return () => window.removeEventListener("erp-orders-synced", onSync);
   }, []);
 
   useEffect(() => {

@@ -8,6 +8,7 @@ import {
   adjustWarehouseStock,
   ensureMainWarehouse,
   MAIN_WAREHOUSE_ID,
+  matchVariantSkuFromOrderLine,
 } from '@/lib/warehouse-stock';
 
 export type ProductMatch = {
@@ -74,16 +75,6 @@ export async function findProductBySkuOrBarcode(
       }
     }
 
-    const byParent = await Product.findOne({ barcode: { $in: barcodeKeys } });
-    if (byParent) {
-      return {
-        product: byParent as ProductMatch['product'],
-        variantIndex: -1,
-        matchedSku: String(byParent.sku ?? ''),
-        matchedBarcode: String(byParent.barcode ?? b),
-      };
-    }
-
     const byVariant = await Product.findOne({ 'variants.barcode': { $in: barcodeKeys } });
     if (byVariant) {
       const idx = matchVariantBarcode(byVariant as ProductMatch['product'], barcodeKeys);
@@ -98,6 +89,28 @@ export async function findProductBySkuOrBarcode(
       };
     }
 
+    const byParent = await Product.findOne({ barcode: { $in: barcodeKeys } });
+    if (byParent) {
+      if (byParent.hasVariants && byParent.variants?.length) {
+        const idx = matchVariantBarcode(byParent as ProductMatch['product'], barcodeKeys);
+        const variants = byParent.variants ?? [];
+        if (idx >= 0) {
+          return {
+            product: byParent as ProductMatch['product'],
+            variantIndex: idx,
+            matchedSku: String(variants[idx]?.sku ?? ''),
+            matchedBarcode: String(variants[idx]?.barcode ?? b),
+          };
+        }
+      }
+      return {
+        product: byParent as ProductMatch['product'],
+        variantIndex: -1,
+        matchedSku: String(byParent.sku ?? ''),
+        matchedBarcode: String(byParent.barcode ?? b),
+      };
+    }
+
     const whRow = await WarehouseStock.findOne({ barcode: { $in: barcodeKeys } }).lean();
     if (whRow?.productId) {
       const fromWarehouse = await Product.findById(whRow.productId);
@@ -109,7 +122,10 @@ export async function findProductBySkuOrBarcode(
           variantSku && idx < 0
             ? variants.findIndex((v: { sku?: string }) => String(v.sku ?? '').trim() === variantSku)
             : idx;
-        const useIdx = idxBySku >= 0 ? idxBySku : idx;
+        let useIdx = idxBySku >= 0 ? idxBySku : idx;
+        if (useIdx < 0 && fromWarehouse.hasVariants && variants.length === 1) {
+          useIdx = 0;
+        }
         return {
           product: fromWarehouse as ProductMatch['product'],
           variantIndex: useIdx >= 0 ? useIdx : -1,
@@ -144,15 +160,6 @@ export async function findProductBySkuOrBarcode(
       }
     }
 
-    const bySku = await Product.findOne({ sku: s });
-    if (bySku) {
-      return {
-        product: bySku as ProductMatch['product'],
-        variantIndex: -1,
-        matchedSku: s,
-        matchedBarcode: String(bySku.barcode ?? ''),
-      };
-    }
     const byVariantSku = await Product.findOne({ 'variants.sku': s });
     if (byVariantSku) {
       const variants = byVariantSku.variants ?? [];
@@ -165,6 +172,16 @@ export async function findProductBySkuOrBarcode(
           idx >= 0 ? String(variants[idx]?.barcode ?? '') : String(byVariantSku.barcode ?? ''),
       };
     }
+
+    const bySku = await Product.findOne({ sku: s });
+    if (bySku) {
+      return {
+        product: bySku as ProductMatch['product'],
+        variantIndex: -1,
+        matchedSku: s,
+        matchedBarcode: String(bySku.barcode ?? ''),
+      };
+    }
   }
 
   return null;
@@ -174,7 +191,8 @@ export async function findProductBySkuOrBarcode(
 export function resolveVariantMatch(
   match: ProductMatch,
   sku?: string,
-  barcode?: string
+  barcode?: string,
+  productName?: string
 ): ProductMatch {
   const p = match.product;
   if (!p.hasVariants || !p.variants?.length) return match;
@@ -209,6 +227,35 @@ export function resolveVariantMatch(
         matchedBarcode: String(variants[idx].barcode ?? ''),
       };
     }
+  }
+
+  const nameHint = String(productName ?? '').trim();
+  if (nameHint) {
+    const vSku = matchVariantSkuFromOrderLine(variants, {
+      productName: nameHint,
+      sku: s,
+      barcode: b,
+    });
+    if (vSku) {
+      const idx = variants.findIndex((v) => String(v.sku ?? '').trim() === vSku);
+      if (idx >= 0) {
+        return {
+          ...match,
+          variantIndex: idx,
+          matchedSku: vSku,
+          matchedBarcode: String(variants[idx].barcode ?? ''),
+        };
+      }
+    }
+  }
+
+  if (variants.length === 1) {
+    return {
+      ...match,
+      variantIndex: 0,
+      matchedSku: String(variants[0].sku ?? ''),
+      matchedBarcode: String(variants[0].barcode ?? ''),
+    };
   }
 
   return match;
@@ -253,8 +300,14 @@ export async function adjustProductStock(input: {
   warehouseId?: string;
   sku?: string;
   barcode?: string;
+  productName?: string;
 }): Promise<ProductMatch['product']> {
-  const match = resolveVariantMatch(input.match, input.sku, input.barcode);
+  const match = resolveVariantMatch(
+    input.match,
+    input.sku,
+    input.barcode,
+    input.productName
+  );
   const { delta } = input;
   const qty = Math.floor(Number(delta) || 0);
   if (qty === 0) return match.product;
@@ -324,6 +377,7 @@ export async function orderLineStockAlreadyApplied(input: {
   reference?: string;
   sku?: string;
   barcode?: string;
+  productName?: string;
 }): Promise<boolean> {
   const ref = String(input.reference ?? '').trim();
   if (!ref) return false;
@@ -331,7 +385,11 @@ export async function orderLineStockAlreadyApplied(input: {
   const b = String(input.barcode ?? '').trim();
   const s = String(input.sku ?? '').trim();
   const or: Record<string, unknown>[] = [];
-  if (b) or.push({ barcode: b });
+  if (b) {
+    for (const key of barcodeLookupKeys(b)) {
+      or.push({ barcode: key });
+    }
+  }
   if (s) or.push({ variantSku: s }, { sku: s });
 
   if (or.length === 0) return false;
@@ -342,12 +400,29 @@ export async function orderLineStockAlreadyApplied(input: {
     reason: { $in: ['order', 'webhook'] },
     $or: or,
   });
-  return Boolean(hit);
+  if (hit) return true;
+
+  const raw = await findProductBySkuOrBarcode(s, b);
+  if (!raw) return false;
+  const resolved = resolveVariantMatch(raw, s, b, input.productName);
+  if (resolved.variantIndex < 0) return false;
+
+  const vSku = String(resolved.product.variants?.[resolved.variantIndex]?.sku ?? '').trim();
+  if (!vSku) return false;
+
+  const byVariant = await StockMovement.exists({
+    reference: ref,
+    delta: { $lt: 0 },
+    reason: { $in: ['order', 'webhook'] },
+    variantSku: vSku,
+  });
+  return Boolean(byVariant);
 }
 
 export async function decrementForOrderItem(input: {
   sku?: string;
   barcode?: string;
+  productName?: string;
   quantity: number;
   reason: string;
   reference?: string;
@@ -357,7 +432,7 @@ export async function decrementForOrderItem(input: {
 }): Promise<ProductMatch['product'] | null> {
   const raw = await findProductBySkuOrBarcode(input.sku, input.barcode);
   if (!raw) return null;
-  const match = resolveVariantMatch(raw, input.sku, input.barcode);
+  const match = resolveVariantMatch(raw, input.sku, input.barcode, input.productName);
   const qty = Math.max(1, Math.floor(Number(input.quantity) || 1));
   return adjustProductStock({
     match,
@@ -369,6 +444,7 @@ export async function decrementForOrderItem(input: {
     warehouseId: input.warehouseId,
     sku: input.sku,
     barcode: input.barcode,
+    productName: input.productName,
   });
 }
 
@@ -376,6 +452,7 @@ export async function decrementForOrderItem(input: {
 export async function decrementForOrderItemIfNotApplied(input: {
   sku?: string;
   barcode?: string;
+  productName?: string;
   quantity: number;
   reason: string;
   reference?: string;
@@ -387,6 +464,7 @@ export async function decrementForOrderItemIfNotApplied(input: {
     reference: input.reference,
     sku: input.sku,
     barcode: input.barcode,
+    productName: input.productName,
   });
   if (already) {
     return { product: null, skipped: true };

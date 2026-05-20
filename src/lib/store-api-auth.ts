@@ -1,5 +1,6 @@
 import connectToDatabase from '@/lib/mongodb';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { isProductionEnv } from '@/lib/production-guard';
 
 /** Mağaza API Bearer token — Ayarlar > webApiToken ile eşleşmeli */
 export async function verifyStoreApiBearer(request: Request): Promise<boolean> {
@@ -11,11 +12,10 @@ export async function verifyStoreApiBearer(request: Request): Promise<boolean> {
   const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
 
   if (!expected) {
-    /** Token tanımlı değilse geliştirme kolaylığı; üretimde token önerilir */
-    return process.env.NODE_ENV !== 'production' || bearer.length === 0;
+    return !isProductionEnv();
   }
 
-  return bearer === expected;
+  return bearer.length > 0 && bearer === expected;
 }
 
 /** Vitrin kök domaini girildiyse /api/store ekle */

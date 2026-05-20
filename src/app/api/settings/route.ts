@@ -7,6 +7,7 @@ import {
   resolveTrendyolBrandId,
 } from '@/lib/trendyol';
 import { randomBytes } from 'crypto';
+import { requireSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,9 +73,13 @@ export async function GET() {
 /** Gizli alanlar ve satıcı ID: istemciden dolu gelmeyeni yok say; mevcut değeri koru. */
 export async function PUT(request: Request) {
   try {
+    const auth = requireSession(request, ['admin']);
+    if (auth instanceof Response) return auth;
+
     let doc = await resolveSingletonSettingDocument();
 
     const data = (await request.json()) as Record<string, unknown>;
+    let webhookSecretGenerated: string | undefined;
 
     const incomingSeller = toTrimmedString(data.trendyolSellerId);
     if (incomingSeller !== '') {
@@ -160,7 +165,8 @@ export async function PUT(request: Request) {
       const ws = String(data.trendyolWebhookSecret ?? '').trim();
       if (ws) doc.set('trendyolWebhookSecret', ws);
     } else if (!String(doc.get('trendyolWebhookSecret') ?? '').trim()) {
-      doc.set('trendyolWebhookSecret', randomBytes(16).toString('hex'));
+      webhookSecretGenerated = randomBytes(16).toString('hex');
+      doc.set('trendyolWebhookSecret', webhookSecretGenerated);
     }
     if (data.publicAppUrl !== undefined) {
       doc.set('publicAppUrl', String(data.publicAppUrl ?? '').trim());
@@ -207,7 +213,12 @@ export async function PUT(request: Request) {
         trendyolBrandId: savedBrandId,
         trendyolBrandName: savedBrandName,
         trendyolStockDeductAt: String(doc.get('trendyolStockDeductAt') ?? 'processing'),
-        trendyolWebhookSecret: String(doc.get('trendyolWebhookSecret') ?? '').trim(),
+        trendyolWebhookSecretSaved: Boolean(
+          String(doc.get('trendyolWebhookSecret') ?? '').trim()
+        ),
+        ...(webhookSecretGenerated
+          ? { trendyolWebhookSecret: webhookSecretGenerated }
+          : {}),
         publicAppUrl: String(doc.get('publicAppUrl') ?? '').trim(),
         webApiUrl: String(doc.get('webApiUrl') ?? '').trim(),
         storeName: String(doc.get('storeName') ?? '').trim(),

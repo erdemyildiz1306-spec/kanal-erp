@@ -50,6 +50,7 @@ type OrderLike = {
   items?: Array<{
     sku?: string;
     barcode?: string;
+    productName?: string;
     quantity?: number;
     lineId?: string;
   }>;
@@ -77,6 +78,7 @@ export async function applyOrderStockDeduction(
     const { product: updated, skipped } = await decrementForOrderItemIfNotApplied({
       sku: line.sku,
       barcode: line.barcode,
+      productName: line.productName,
       quantity: Number(line.quantity) || 1,
       reason: 'order',
       reference: orderNumber,
@@ -93,7 +95,9 @@ export async function applyOrderStockDeduction(
     }
   }
 
-  await Order.updateOne({ orderNumber }, { $set: { stockApplied: true } });
+  if (adjustedLines > 0) {
+    await Order.updateOne({ orderNumber }, { $set: { stockApplied: true } });
+  }
   return { applied: adjustedLines > 0, adjustedLines };
 }
 
@@ -177,7 +181,7 @@ export async function processOrderForFulfillment(
 
   await Order.updateOne(
     { orderNumber: order.orderNumber },
-    { $set: { status: 'Hazırlanıyor', stockApplied: true } }
+    { $set: { status: 'Hazırlanıyor', stockApplied } }
   );
 
   return {

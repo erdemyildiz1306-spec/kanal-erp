@@ -134,6 +134,7 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith('/api/auth/register')) return true;
   if (pathname.startsWith('/api/auth/forgot-password')) return true;
   if (pathname.startsWith('/api/auth/reset-password')) return true;
+  if (pathname.startsWith('/api/auth/register-config')) return true;
   if (pathname === '/api/store/stock-price') return true;
   if (pathname.startsWith('/api/auth/dev-reset-users')) return true;
   if (pathname.startsWith('/api/auth/logout')) return true;
@@ -141,6 +142,7 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith('/api/apk/')) return true;
   if (pathname.startsWith('/api/trendyol/webhook/')) return true;
   if (pathname === '/api/orders/webhook') return true;
+  if (pathname === '/api/health') return true;
   if (pathname.startsWith('/_next/')) return true;
   if (pathname.startsWith('/uploads/')) return true;
   if (pathname === '/favicon.ico') return true;

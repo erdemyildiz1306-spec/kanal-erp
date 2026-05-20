@@ -7,6 +7,7 @@ import {
   stockFromWarehouseMap,
 } from '@/lib/portal-orders';
 import { MAIN_WAREHOUSE_ID } from '@/lib/warehouse-stock';
+import { buildTurkishSearchRegex } from '@/lib/search-text';
 
 export async function GET(request: Request) {
   try {
@@ -28,12 +29,13 @@ export async function GET(request: Request) {
     };
 
     if (q) {
+      const regex = buildTurkishSearchRegex(q).source;
       filter.$or = [
-        { name: { $regex: q, $options: 'i' } },
-        { sku: { $regex: q, $options: 'i' } },
-        { barcode: { $regex: q, $options: 'i' } },
-        { 'variants.sku': { $regex: q, $options: 'i' } },
-        { 'variants.barcode': { $regex: q, $options: 'i' } },
+        { name: { $regex: regex, $options: 'i' } },
+        { sku: { $regex: regex, $options: 'i' } },
+        { barcode: { $regex: regex, $options: 'i' } },
+        { 'variants.sku': { $regex: regex, $options: 'i' } },
+        { 'variants.barcode': { $regex: regex, $options: 'i' } },
       ];
     }
     if (category && category !== 'Tümü') {

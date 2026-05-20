@@ -175,9 +175,13 @@ export function allowTrendyolOrderMock(): boolean {
   return parseEnvBool(process.env.TRENDYOL_ALLOW_ORDER_SYNC_MOCK);
 }
 
+import { isProductionEnv } from '@/lib/production-guard';
+
 export function verifyStoreWebhookSecret(request: Request): boolean {
   const expected = process.env.STORE_WEBHOOK_SECRET?.trim();
-  if (!expected) return true;
+  if (!expected) {
+    return !isProductionEnv();
+  }
   const header =
     request.headers.get('x-webhook-secret') ??
     request.headers.get('x-kanal-webhook-secret') ??

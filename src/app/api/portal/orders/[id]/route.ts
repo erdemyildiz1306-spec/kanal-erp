@@ -7,11 +7,11 @@ import { decrementForOrderItemIfNotApplied } from '@/lib/inventory';
 import { restoreOrderStockIfApplied } from '@/lib/stock-reversal';
 import { resolvePortalLine } from '@/lib/portal-orders';
 
-async function getOwnedOrder(id: string, customerId: string, customerName: string) {
+async function getOwnedOrder(id: string, customerId: string) {
   return Order.findOne({
     _id: id,
     platform: 'b2b',
-    $or: [{ customerId }, { customerName, customerId: { $exists: false } }],
+    customerId,
   });
 }
 
@@ -32,7 +32,7 @@ export async function GET(
     }
 
     const { id } = await ctx.params;
-    const order = await getOwnedOrder(id, String(customer._id), customer.name);
+    const order = await getOwnedOrder(id, String(customer._id));
     if (!order) {
       return NextResponse.json({ success: false, error: 'Sipariş bulunamadı.' }, { status: 404 });
     }
@@ -61,7 +61,7 @@ export async function PATCH(
     }
 
     const { id } = await ctx.params;
-    const order = await getOwnedOrder(id, String(customer._id), customer.name);
+    const order = await getOwnedOrder(id, String(customer._id));
     if (!order) {
       return NextResponse.json({ success: false, error: 'Sipariş bulunamadı.' }, { status: 404 });
     }

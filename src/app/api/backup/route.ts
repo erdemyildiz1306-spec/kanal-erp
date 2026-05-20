@@ -3,12 +3,14 @@ import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import Order from '@/models/Order';
 import Setting from '@/models/Setting';
-import { getSessionFromRequest } from '@/lib/auth';
+import { requireSession } from '@/lib/auth';
 
 export async function GET(request: Request) {
   try {
+    const auth = requireSession(request, ['admin']);
+    if (auth instanceof Response) return auth;
+
     await connectToDatabase();
-    getSessionFromRequest(request);
     const [products, orders, settings] = await Promise.all([
       Product.find({}).lean(),
       Order.find({}).sort({ createdAt: -1 }).limit(5000).lean(),

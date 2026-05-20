@@ -73,7 +73,7 @@ type MatchLike = {
 };
 
 function matchVariantSkuFromOrderLine(
-  variants: Array<{ sku?: string; barcode?: string; sizeLabel?: string }>,
+  variants: Array<{ sku?: string; barcode?: string; sizeLabel?: string; colorLabel?: string }>,
   line: { productName?: string; sku?: string; barcode?: string }
 ): string {
   const barcode = String(line.barcode ?? '').trim();
@@ -92,7 +92,11 @@ function matchVariantSkuFromOrderLine(
   if (productName) {
     for (const v of variants) {
       const sizeLabel = String(v.sizeLabel ?? '').trim().toLowerCase();
+      const colorLabel = String(v.colorLabel ?? '').trim().toLowerCase();
       if (sizeLabel && productName.includes(sizeLabel)) {
+        return String(v.sku ?? '');
+      }
+      if (colorLabel && productName.includes(colorLabel)) {
         return String(v.sku ?? '');
       }
     }
@@ -100,6 +104,8 @@ function matchVariantSkuFromOrderLine(
 
   return '';
 }
+
+export { matchVariantSkuFromOrderLine };
 
 async function inferVariantSkuForOrphanStock(
   productId: string,
@@ -147,6 +153,51 @@ async function inferVariantSkuForOrphanStock(
   return String(variants[0]?.sku ?? '');
 }
 
+async function splitOrphanStockToVariants(input: {
+  warehouseId: string;
+  productId: string;
+  orphanStock: number;
+  variants: Array<{ sku?: string; barcode?: string; stock?: number }>;
+}) {
+  const { warehouseId, productId, orphanStock, variants } = input;
+  if (orphanStock <= 0 || !variants.length) return;
+
+  const weights = variants.map((v) => Math.max(0, Number(v.stock) || 0));
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  let remaining = orphanStock;
+
+  for (let i = 0; i < variants.length; i++) {
+    const vSku = String(variants[i].sku ?? '').trim();
+    if (!vSku) continue;
+
+    let share =
+      totalWeight > 0
+        ? i === variants.length - 1
+          ? remaining
+          : Math.floor(orphanStock * (weights[i]! / totalWeight))
+        : i === variants.length - 1
+          ? remaining
+          : Math.floor(orphanStock / variants.length);
+
+    share = Math.max(0, Math.min(share, remaining));
+    remaining -= share;
+
+    if (share <= 0) continue;
+
+    await WarehouseStock.findOneAndUpdate(
+      { warehouseId, productId, variantSku: vSku },
+      {
+        $setOnInsert: {
+          sku: vSku,
+          barcode: String(variants[i]?.barcode ?? ''),
+        },
+        $inc: { stock: share },
+      },
+      { upsert: true }
+    );
+  }
+}
+
 /** Varyantlı ürünlerde variantSku boş kalan hatalı depo satırlarını düzeltir. */
 export async function migrateOrphanVariantWarehouseRows(
   productId: string
@@ -163,6 +214,20 @@ export async function migrateOrphanVariantWarehouseRows(
   for (const orphan of orphans) {
     const orphanStock = Math.max(0, Number(orphan.stock) || 0);
     const orphanSku = String(orphan.sku ?? '').trim();
+    const parentSku = String(product.sku ?? '').trim();
+
+    if (orphanStock > 0 && parentSku && orphanSku === parentSku) {
+      await splitOrphanStockToVariants({
+        warehouseId: String(orphan.warehouseId),
+        productId,
+        orphanStock,
+        variants,
+      });
+      await orphan.deleteOne();
+      changed = true;
+      continue;
+    }
+
     const targetVariantSku = await inferVariantSkuForOrphanStock(
       productId,
       variants,
@@ -276,23 +341,44 @@ export async function adjustWarehouseStock(input: {
   delta: number;
 }): Promise<number> {
   const { warehouseId, match, delta } = input;
+  await migrateOrphanVariantWarehouseRows(String(match.product._id));
   await ensureWarehouseStockRow(warehouseId, match);
   const variantSku =
     match.variantIndex >= 0 && match.product.variants?.[match.variantIndex]
       ? String(match.product.variants[match.variantIndex].sku ?? '')
       : '';
 
-  const row = await WarehouseStock.findOneAndUpdate(
-    { warehouseId, productId: match.product._id, variantSku },
-    {},
+  const qty = Math.floor(delta);
+  const filter = { warehouseId, productId: match.product._id, variantSku };
+
+  if (qty === 0) {
+    const row = await WarehouseStock.findOne(filter).lean();
+    return Math.max(0, Number(row?.stock) || 0);
+  }
+
+  if (qty < 0) {
+    const abs = Math.abs(qty);
+    const updated = await WarehouseStock.findOneAndUpdate(
+      { ...filter, stock: { $gte: abs } },
+      { $inc: { stock: qty } },
+      { new: true }
+    );
+    if (!updated) {
+      throw new Error('Yetersiz stok');
+    }
+    await syncProductStockFromWarehouses(String(match.product._id));
+    return Math.max(0, Number(updated.stock) || 0);
+  }
+
+  const updated = await WarehouseStock.findOneAndUpdate(
+    filter,
+    { $inc: { stock: qty } },
     { new: true }
   );
-  if (!row) return 0;
+  if (!updated) return 0;
 
-  row.stock = Math.max(0, Math.floor(Number(row.stock) || 0) + Math.floor(delta));
-  await row.save();
   await syncProductStockFromWarehouses(String(match.product._id));
-  return row.stock;
+  return Math.max(0, Number(updated.stock) || 0);
 }
 
 export async function getWarehouseStockSummary(warehouseId: string) {
