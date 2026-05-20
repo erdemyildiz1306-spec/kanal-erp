@@ -2,6 +2,53 @@ import Product from '@/models/Product';
 import WarehouseStock from '@/models/WarehouseStock';
 import { MAIN_WAREHOUSE_ID } from '@/lib/warehouse-stock';
 
+type ProductStockSource = {
+  stock?: number;
+  hasVariants?: boolean;
+  variants?: Array<{ sku?: string; stock?: number }>;
+};
+
+/** Depo stoklarını tek sorguda toplu oku — portal listesi için. */
+export async function getWarehouseStockMap(
+  productIds: string[],
+  warehouseId: string
+): Promise<Map<string, number>> {
+  if (!productIds.length) return new Map();
+
+  const rows = await WarehouseStock.find({
+    warehouseId,
+    productId: { $in: productIds },
+  })
+    .select('productId variantSku stock')
+    .lean();
+
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    const pid = String(row.productId);
+    const variantSku = String(row.variantSku ?? '').trim();
+    const key = variantSku ? `${pid}::${variantSku}` : pid;
+    map.set(key, (map.get(key) ?? 0) + Math.max(0, Number(row.stock) || 0));
+  }
+  return map;
+}
+
+export function stockFromWarehouseMap(
+  map: Map<string, number>,
+  productId: string,
+  product: ProductStockSource,
+  variantSku = ''
+): number {
+  const vSku = String(variantSku ?? '').trim();
+  const key = vSku ? `${productId}::${vSku}` : productId;
+  if (map.has(key)) return map.get(key)!;
+
+  if (vSku && product.hasVariants) {
+    const v = (product.variants ?? []).find((x) => String(x.sku ?? '') === vSku);
+    return Math.max(0, Number(v?.stock) || 0);
+  }
+  return Math.max(0, Number(product.stock) || 0);
+}
+
 export async function getProductStockInWarehouse(
   productId: string,
   warehouseId: string,
@@ -11,16 +58,16 @@ export async function getProductStockInWarehouse(
     warehouseId,
     productId,
     variantSku: variantSku || '',
-  }).lean();
+  })
+    .select('stock')
+    .lean();
   if (row) return Math.max(0, Number(row.stock) || 0);
 
-  const product = await Product.findById(productId).lean();
+  const product = await Product.findById(productId)
+    .select('stock hasVariants variants.stock variants.sku')
+    .lean();
   if (!product) return 0;
-  if (variantSku && product.hasVariants) {
-    const v = (product.variants ?? []).find((x: { sku?: string }) => String(x.sku) === variantSku);
-    return Math.max(0, Number(v?.stock) || 0);
-  }
-  return Math.max(0, Number(product.stock) || 0);
+  return stockFromWarehouseMap(new Map(), productId, product, variantSku);
 }
 
 export async function resolvePortalLine(input: {

@@ -44,7 +44,8 @@ export async function GET(request: Request) {
     }
     if (!match && sku) {
       match = await resolveProductMatch(sku, '');
-    }    if (!match) {
+    }
+    if (!match) {
       return NextResponse.json(
         { success: false, error: 'Ürün bulunamadı.' },
         { status: 404 }
@@ -116,6 +117,8 @@ export async function POST(request: Request) {
       userName: session?.name,
       note: body.note,
       warehouseId: body.warehouseId,
+      sku,
+      barcode,
     });
 
     let channelSync;

@@ -4,6 +4,7 @@ import {
   adjustProductStock,
   findProductBySkuOrBarcode,
   orderHasStockDeductions,
+  resolveVariantMatch,
 } from '@/lib/inventory';
 import { logActivity } from '@/lib/activity-log';
 
@@ -34,17 +35,20 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
   const missed: string[] = [];
 
   for (const line of order.items ?? []) {
-    const match = await findProductBySkuOrBarcode(line.sku, line.barcode);
-    if (!match) {
+    const raw = await findProductBySkuOrBarcode(line.sku, line.barcode);
+    if (!raw) {
       missed.push(String(line.sku || line.barcode || 'satır'));
       continue;
     }
+    const match = resolveVariantMatch(raw, line.sku, line.barcode);
     const qty = Math.max(1, Math.floor(Number(line.quantity) || 1));
     await adjustProductStock({
       match,
       delta: qty,
       reason: 'return',
       reference: `${ref}:restore`,
+      sku: line.sku,
+      barcode: line.barcode,
     });
     restored += qty;
   }

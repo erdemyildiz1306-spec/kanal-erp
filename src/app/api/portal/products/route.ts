@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { getSessionFromRequest } from '@/lib/auth';
-import { getProductStockInWarehouse } from '@/lib/portal-orders';
+import {
+  getWarehouseStockMap,
+  stockFromWarehouseMap,
+} from '@/lib/portal-orders';
 import { MAIN_WAREHOUSE_ID } from '@/lib/warehouse-stock';
 
 export async function GET(request: Request) {
@@ -29,6 +32,8 @@ export async function GET(request: Request) {
         { name: { $regex: q, $options: 'i' } },
         { sku: { $regex: q, $options: 'i' } },
         { barcode: { $regex: q, $options: 'i' } },
+        { 'variants.sku': { $regex: q, $options: 'i' } },
+        { 'variants.barcode': { $regex: q, $options: 'i' } },
       ];
     }
     if (category && category !== 'Tümü') {
@@ -41,34 +46,32 @@ export async function GET(request: Request) {
       .limit(200)
       .lean();
 
+    const productIds = products.map((p) => String(p._id));
+    const stockMap = await getWarehouseStockMap(productIds, warehouseId);
+
     const items = [];
     for (const p of products) {
-      let stock = await getProductStockInWarehouse(String(p._id), warehouseId);
-      const variants = p.hasVariants
-        ? await Promise.all(
-            (p.variants ?? []).map(async (v: { sku?: string; barcode?: string; stock?: number }) => {
-              const vStock = await getProductStockInWarehouse(
-                String(p._id),
-                warehouseId,
-                String(v.sku ?? '')
-              );
-              return {
-                sku: v.sku,
-                barcode: v.barcode,
-                stock: vStock,
-              };
-            })
-          )
+      const pid = String(p._id);
+      const variants: Array<{ sku?: string; barcode?: string; stock: number }> = p.hasVariants
+        ? (p.variants ?? []).map((v: { sku?: string; barcode?: string; stock?: number }) => {
+            const vSku = String(v.sku ?? '');
+            return {
+              sku: v.sku,
+              barcode: v.barcode,
+              stock: stockFromWarehouseMap(stockMap, pid, p, vSku),
+            };
+          })
         : [];
 
+      let stock = stockFromWarehouseMap(stockMap, pid, p);
       if (p.hasVariants && variants.length) {
-        stock = variants.reduce((a, v) => a + (Number(v.stock) || 0), 0);
+        stock = variants.reduce((a: number, v) => a + (Number(v.stock) || 0), 0);
       }
 
       if (inStockOnly && stock <= 0) continue;
 
       items.push({
-        id: String(p._id),
+        id: pid,
         name: p.name,
         sku: p.sku,
         barcode: p.barcode,

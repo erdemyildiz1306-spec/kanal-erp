@@ -1,4 +1,6 @@
 import Product from '@/models/Product';
+import Order from '@/models/Order';
+import StockMovement from '@/models/StockMovement';
 import Warehouse from '@/models/Warehouse';
 import WarehouseStock from '@/models/WarehouseStock';
 
@@ -24,6 +26,8 @@ export async function listWarehouses() {
 
 /** Ürün stok toplamlarını tüm depolardan yeniden hesapla */
 export async function syncProductStockFromWarehouses(productId: string) {
+  await migrateOrphanVariantWarehouseRows(productId);
+
   const product = await Product.findById(productId);
   if (!product) return null;
 
@@ -68,11 +72,173 @@ type MatchLike = {
   matchedBarcode: string;
 };
 
+function matchVariantSkuFromOrderLine(
+  variants: Array<{ sku?: string; barcode?: string; sizeLabel?: string }>,
+  line: { productName?: string; sku?: string; barcode?: string }
+): string {
+  const barcode = String(line.barcode ?? '').trim();
+  if (barcode) {
+    const hit = variants.find((v) => String(v.barcode ?? '').trim() === barcode);
+    if (hit) return String(hit.sku ?? '');
+  }
+
+  const sku = String(line.sku ?? '').trim();
+  if (sku) {
+    const hit = variants.find((v) => String(v.sku ?? '').trim() === sku);
+    if (hit) return String(hit.sku ?? '');
+  }
+
+  const productName = String(line.productName ?? '').toLowerCase();
+  if (productName) {
+    for (const v of variants) {
+      const sizeLabel = String(v.sizeLabel ?? '').trim().toLowerCase();
+      if (sizeLabel && productName.includes(sizeLabel)) {
+        return String(v.sku ?? '');
+      }
+    }
+  }
+
+  return '';
+}
+
+async function inferVariantSkuForOrphanStock(
+  productId: string,
+  variants: Array<{ sku?: string; barcode?: string; sizeLabel?: string }>,
+  orphanSku: string
+): Promise<string> {
+  const lastMove = await StockMovement.findOne({
+    productId,
+    delta: { $lt: 0 },
+    reason: { $in: ['order', 'webhook'] },
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (lastMove?.variantSku) {
+    const fromMove = String(lastMove.variantSku).trim();
+    if (variants.some((v) => String(v.sku ?? '').trim() === fromMove)) {
+      return fromMove;
+    }
+  }
+
+  const ref = String(lastMove?.reference ?? '').trim();
+  if (ref) {
+    const order = await Order.findOne({ orderNumber: ref }).lean();
+    const items =
+      (order as { items?: Array<{ productName?: string; sku?: string; barcode?: string }> } | null)
+        ?.items ?? [];
+    for (const line of items) {
+      const lineSku = String(line.sku ?? '').trim();
+      if (orphanSku && lineSku && lineSku !== orphanSku) continue;
+      const matched = matchVariantSkuFromOrderLine(variants, line);
+      if (matched) return matched;
+    }
+    for (const line of items) {
+      const matched = matchVariantSkuFromOrderLine(variants, line);
+      if (matched) return matched;
+    }
+  }
+
+  const idxByOrphanSku = variants.findIndex(
+    (v) => String(v.sku ?? '').trim() === orphanSku
+  );
+  if (idxByOrphanSku >= 0) return String(variants[idxByOrphanSku].sku ?? '');
+
+  return String(variants[0]?.sku ?? '');
+}
+
+/** Varyantlı ürünlerde variantSku boş kalan hatalı depo satırlarını düzeltir. */
+export async function migrateOrphanVariantWarehouseRows(
+  productId: string
+): Promise<boolean> {
+  const product = await Product.findById(productId);
+  if (!product?.hasVariants || !product.variants?.length) return false;
+
+  const orphans = await WarehouseStock.find({ productId, variantSku: '' });
+  if (!orphans.length) return false;
+
+  const variants = product.variants;
+  let changed = false;
+
+  for (const orphan of orphans) {
+    const orphanStock = Math.max(0, Number(orphan.stock) || 0);
+    const orphanSku = String(orphan.sku ?? '').trim();
+    const targetVariantSku = await inferVariantSkuForOrphanStock(
+      productId,
+      variants,
+      orphanSku
+    );
+
+    if (!targetVariantSku) {
+      await orphan.deleteOne();
+      changed = true;
+      continue;
+    }
+
+    const variant = variants.find(
+      (v: { sku?: string; barcode?: string }) =>
+        String(v.sku ?? '') === targetVariantSku
+    );
+    if (orphanStock > 0) {
+      await WarehouseStock.findOneAndUpdate(
+        {
+          warehouseId: orphan.warehouseId,
+          productId,
+          variantSku: targetVariantSku,
+        },
+        {
+          $setOnInsert: {
+            sku: targetVariantSku,
+            barcode: String(variant?.barcode ?? ''),
+          },
+          $inc: { stock: orphanStock },
+        },
+        { upsert: true }
+      );
+    }
+
+    await orphan.deleteOne();
+    changed = true;
+  }
+
+  return changed;
+}
+
+/** Liste yüklemesinde toplu yetim satır onarımı */
+export async function repairOrphanVariantWarehouseStockBatch(
+  productIds: string[]
+): Promise<number> {
+  const ids = [...new Set(productIds.map((id) => String(id).trim()).filter(Boolean))];
+  if (!ids.length) return 0;
+
+  const orphanProductIds = await WarehouseStock.distinct('productId', {
+    productId: { $in: ids },
+    variantSku: '',
+  });
+
+  let repaired = 0;
+  for (const pid of orphanProductIds) {
+    const migrated = await migrateOrphanVariantWarehouseRows(String(pid));
+    if (migrated) {
+      await syncProductStockFromWarehouses(String(pid));
+      repaired++;
+    }
+  }
+  return repaired;
+}
+
 export async function ensureWarehouseStockRow(
   warehouseId: string,
   match: MatchLike
 ): Promise<{ stock: number }> {
   const p = match.product;
+
+  if (p.hasVariants && p.variants?.length && match.variantIndex < 0) {
+    throw new Error(
+      `Varyantlı ürün için beden/varyant SKU veya barkod gerekli (${String(p.sku ?? '')})`
+    );
+  }
+
   const variantSku =
     match.variantIndex >= 0 && p.variants?.[match.variantIndex]
       ? String(p.variants[match.variantIndex].sku ?? '')

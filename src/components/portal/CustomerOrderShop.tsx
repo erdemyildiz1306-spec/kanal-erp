@@ -53,7 +53,7 @@ export default function CustomerOrderShop({ onClose, onSuccess }: Props) {
   const [categories, setCategories] = useState<string[]>(["Tümü"]);
   const [category, setCategory] = useState("Tümü");
   const [search, setSearch] = useState("");
-  const [inStockOnly, setInStockOnly] = useState(true);
+  const [inStockOnly, setInStockOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [notes, setNotes] = useState("");
@@ -293,11 +293,21 @@ export default function CustomerOrderShop({ onClose, onSuccess }: Props) {
 
       <div className="flex-1 overflow-y-auto px-4 py-3 main-scroll">
         {loading ? (
-          <div className="flex justify-center py-16 erp-muted">
+          <div className="flex flex-col items-center justify-center py-16 erp-muted gap-2">
             <Loader2 className="animate-spin" size={28} />
+            <p className="text-sm">Ürünler yükleniyor…</p>
           </div>
         ) : products.length === 0 ? (
-          <p className="text-center erp-muted py-12">Ürün bulunamadı.</p>
+          <div className="text-center erp-muted py-12 space-y-2">
+            <p>Ürün bulunamadı.</p>
+            {inStockOnly ? (
+              <p className="text-xs">
+                Stok filtresi açık — tüm ürünleri görmek için «Stokta olanlar» kutusunu kapatın.
+              </p>
+            ) : search.trim() ? (
+              <p className="text-xs">Arama kriterlerinizi değiştirmeyi deneyin.</p>
+            ) : null}
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-32">
             {products.map((p) => (

@@ -170,6 +170,50 @@ export async function findProductBySkuOrBarcode(
   return null;
 }
 
+/** Varyantlı üründe ana SKU ile eşleşince doğru beden/varyant satırını çöz. */
+export function resolveVariantMatch(
+  match: ProductMatch,
+  sku?: string,
+  barcode?: string
+): ProductMatch {
+  const p = match.product;
+  if (!p.hasVariants || !p.variants?.length) return match;
+  if (match.variantIndex >= 0) return match;
+
+  const s = String(sku ?? match.matchedSku ?? '').trim();
+  const b = String(barcode ?? match.matchedBarcode ?? '').trim();
+  const variants = p.variants ?? [];
+
+  if (b) {
+    const keys = barcodeLookupKeys(b);
+    for (let i = 0; i < variants.length; i++) {
+      const vb = String(variants[i].barcode ?? '').trim();
+      if (vb && barcodeLookupKeys(vb).some((k) => keys.includes(k))) {
+        return {
+          ...match,
+          variantIndex: i,
+          matchedSku: String(variants[i].sku ?? ''),
+          matchedBarcode: vb,
+        };
+      }
+    }
+  }
+
+  if (s) {
+    const idx = variants.findIndex((v) => String(v.sku ?? '').trim() === s);
+    if (idx >= 0) {
+      return {
+        ...match,
+        variantIndex: idx,
+        matchedSku: s,
+        matchedBarcode: String(variants[idx].barcode ?? ''),
+      };
+    }
+  }
+
+  return match;
+}
+
 export async function recordStockMovement(input: {
   productId: unknown;
   sku: string;
@@ -207,10 +251,23 @@ export async function adjustProductStock(input: {
   userName?: string;
   note?: string;
   warehouseId?: string;
+  sku?: string;
+  barcode?: string;
 }): Promise<ProductMatch['product']> {
-  const { match, delta } = input;
+  const match = resolveVariantMatch(input.match, input.sku, input.barcode);
+  const { delta } = input;
   const qty = Math.floor(Number(delta) || 0);
   if (qty === 0) return match.product;
+
+  if (
+    match.product.hasVariants &&
+    match.product.variants?.length &&
+    match.variantIndex < 0
+  ) {
+    throw new Error(
+      `Varyantlı ürün için beden/varyant SKU veya barkod gerekli (${String(match.product.sku ?? '')})`
+    );
+  }
 
   await ensureMainWarehouse();
   const warehouseId = input.warehouseId || MAIN_WAREHOUSE_ID;
@@ -298,8 +355,9 @@ export async function decrementForOrderItem(input: {
   userName?: string;
   warehouseId?: string;
 }): Promise<ProductMatch['product'] | null> {
-  const match = await findProductBySkuOrBarcode(input.sku, input.barcode);
-  if (!match) return null;
+  const raw = await findProductBySkuOrBarcode(input.sku, input.barcode);
+  if (!raw) return null;
+  const match = resolveVariantMatch(raw, input.sku, input.barcode);
   const qty = Math.max(1, Math.floor(Number(input.quantity) || 1));
   return adjustProductStock({
     match,
@@ -309,6 +367,8 @@ export async function decrementForOrderItem(input: {
     userId: input.userId,
     userName: input.userName,
     warehouseId: input.warehouseId,
+    sku: input.sku,
+    barcode: input.barcode,
   });
 }
 
