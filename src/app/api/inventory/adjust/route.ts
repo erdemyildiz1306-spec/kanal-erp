@@ -2,25 +2,49 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { findProductBySkuOrBarcode, adjustProductStock } from '@/lib/inventory';
+import { barcodeLookupKeys } from '@/lib/barcode-normalize';
 import { pushProductStockToChannels } from '@/lib/channel-sync';
 import { getSessionFromRequest } from '@/lib/auth';
+
+async function resolveProductMatch(sku: string, barcode: string) {
+  const barcodeKeys = barcode ? barcodeLookupKeys(barcode) : [];
+  for (const key of barcodeKeys.length ? barcodeKeys : ['']) {
+    if (!key && !sku) continue;
+    const match = await findProductBySkuOrBarcode(sku, key || undefined);
+    if (match) return match;
+  }
+  if (sku && barcode) {
+    return findProductBySkuOrBarcode(sku, undefined);
+  }
+  return null;
+}
 
 export async function GET(request: Request) {
   try {
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
-    const barcode = String(searchParams.get('barcode') ?? '').trim();
+    const barcodeList = searchParams
+      .getAll('barcode')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const barcode = barcodeList[0] ?? String(searchParams.get('barcode') ?? '').trim();
     const sku = String(searchParams.get('sku') ?? '').trim();
 
-    if (!barcode && !sku) {
+    if (!barcode && !sku && barcodeList.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Barkod veya SKU gerekli.' },
         { status: 400 }
       );
     }
 
-    const match = await findProductBySkuOrBarcode(sku, barcode);
-    if (!match) {
+    let match = null;
+    for (const code of barcodeList.length ? barcodeList : [barcode]) {
+      match = await resolveProductMatch(sku, code);
+      if (match) break;
+    }
+    if (!match && sku) {
+      match = await resolveProductMatch(sku, '');
+    }    if (!match) {
       return NextResponse.json(
         { success: false, error: 'Ürün bulunamadı.' },
         { status: 404 }
@@ -76,7 +100,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const match = await findProductBySkuOrBarcode(sku, barcode);
+    const match = await resolveProductMatch(sku, barcode);
     if (!match) {
       return NextResponse.json(
         { success: false, error: 'Ürün bulunamadı.' },
@@ -110,6 +134,7 @@ export async function POST(request: Request) {
         _id: String(updated._id),
         name: updated.name,
         sku: match.matchedSku || updated.sku,
+        barcode: match.matchedBarcode || updated.barcode,
         stock: displayStock,
         price: Number(updated.price) || 0,
       },

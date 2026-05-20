@@ -137,9 +137,9 @@ export default function Home() {
             <Link
               key={action.href}
               href={action.href}
-              className={`erp-card flex flex-col items-center justify-center gap-1.5 p-3 min-h-[5.5rem] active:scale-[0.97] transition-transform ${action.tone}`}
+              className={`flex flex-col items-center justify-center gap-1.5 p-3 min-h-[5.5rem] rounded-2xl shadow-sm active:scale-[0.97] transition-transform ${action.tone}`}
             >
-              <action.icon size={24} />
+              <action.icon size={24} strokeWidth={2.25} />
               <span className="font-bold text-sm leading-none">{action.label}</span>
               <span className="text-[10px] opacity-80 hidden sm:block">{action.desc}</span>
             </Link>

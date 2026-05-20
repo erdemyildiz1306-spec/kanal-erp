@@ -1,12 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
   Warehouse as WarehouseIcon,
   MapPin,
   Package,
-  ScanBarcode,
   ArrowLeftRight,
   Plus,
   Boxes,
@@ -17,6 +15,7 @@ import {
 import Modal from "@/components/ui/Modal";
 import StatCard from "@/components/ui/StatCard";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import StockBarcodePanel from "@/components/scanner/StockBarcodePanel";
 
 type WarehouseRow = {
   warehouseId: string;
@@ -167,11 +166,13 @@ export default function WarehousePage() {
     setBusy(true);
     setError("");
     try {
+      const code = adjustSku.trim();
       const res = await fetch("/api/inventory/adjust", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sku: adjustSku.trim(),
+          sku: code,
+          barcode: code,
           delta,
           reason: "adjustment",
           note: adjustNote,
@@ -251,17 +252,13 @@ export default function WarehousePage() {
           </p>
         </div>
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-          <Link href="/scanner" className="erp-btn erp-btn-secondary text-sm col-span-2 sm:col-span-1">
-            <ScanBarcode size={18} />
-            Barkod Tara
-          </Link>
           <button
             type="button"
             onClick={() => {
               setTransferForm({ fromId: selectedId, toId: "", sku: "", qty: "" });
               setTransferOpen(true);
             }}
-            className="erp-btn erp-btn-secondary text-sm bg-violet-500/10 text-violet-700 dark:text-violet-300"
+            className="erp-btn erp-btn-secondary text-sm bg-violet-500/10 text-violet-700 dark:text-violet-300 col-span-2 sm:col-span-1"
           >
             <ArrowLeftRight size={18} />
             Transfer
@@ -276,6 +273,15 @@ export default function WarehousePage() {
           </button>
         </div>
       </div>
+
+      <StockBarcodePanel
+        variant="embedded"
+        warehouseId={selectedId}
+        defaultNote="Depo barkod giriş/çıkış"
+        onStockChanged={() => {
+          void Promise.all([loadWarehouses(), loadStock(selectedId, stockSearch)]);
+        }}
+      />
 
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>

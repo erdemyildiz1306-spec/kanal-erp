@@ -2,6 +2,8 @@ import type mongoose from 'mongoose';
 import Product from '@/models/Product';
 import ProductLink from '@/models/ProductLink';
 import StockMovement from '@/models/StockMovement';
+import WarehouseStock from '@/models/WarehouseStock';
+import { barcodeLookupKeys } from '@/lib/barcode-normalize';
 import {
   adjustWarehouseStock,
   ensureMainWarehouse,
@@ -37,48 +39,87 @@ export async function findProductBySkuOrBarcode(
 ): Promise<ProductMatch | null> {
   const s = String(sku ?? '').trim();
   const b = String(barcode ?? '').trim();
+  const barcodeKeys = b ? barcodeLookupKeys(b) : [];
 
-  if (b) {
-    const link = await ProductLink.findOne({ matchType: 'barcode', matchKey: b }).lean();
-    if (link?.productId) {
-      const linked = await Product.findById(link.productId);
-      if (linked) {
-        const variants = linked.variants ?? [];
-        const idx = variants.findIndex(
-          (v: { barcode?: string }) => String(v.barcode ?? '').trim() === b
-        );
-        return {
-          product: linked as ProductMatch['product'],
-          variantIndex: idx >= 0 ? idx : -1,
-          matchedSku:
-            idx >= 0
-              ? String(variants[idx]?.sku ?? linked.sku ?? '')
-              : String(linked.sku ?? ''),
-          matchedBarcode: b,
-        };
+  const matchVariantBarcode = (
+    product: ProductMatch['product'],
+    keys: string[]
+  ): number => {
+    const variants = product.variants ?? [];
+    return variants.findIndex((v: { barcode?: string }) => {
+      const vb = String(v.barcode ?? '').trim();
+      if (!vb) return false;
+      return barcodeLookupKeys(vb).some((k) => keys.includes(k));
+    });
+  };
+
+  if (barcodeKeys.length > 0) {
+    for (const key of barcodeKeys) {
+      const link = await ProductLink.findOne({ matchType: 'barcode', matchKey: key }).lean();
+      if (link?.productId) {
+        const linked = await Product.findById(link.productId);
+        if (linked) {
+          const idx = matchVariantBarcode(linked as ProductMatch['product'], barcodeKeys);
+          const variants = linked.variants ?? [];
+          return {
+            product: linked as ProductMatch['product'],
+            variantIndex: idx >= 0 ? idx : -1,
+            matchedSku:
+              idx >= 0
+                ? String(variants[idx]?.sku ?? linked.sku ?? '')
+                : String(linked.sku ?? ''),
+            matchedBarcode: key,
+          };
+        }
       }
     }
 
-    const byParent = await Product.findOne({ barcode: b });
+    const byParent = await Product.findOne({ barcode: { $in: barcodeKeys } });
     if (byParent) {
       return {
         product: byParent as ProductMatch['product'],
         variantIndex: -1,
         matchedSku: String(byParent.sku ?? ''),
-        matchedBarcode: b,
+        matchedBarcode: String(byParent.barcode ?? b),
       };
     }
-    const byVariant = await Product.findOne({ 'variants.barcode': b });
+
+    const byVariant = await Product.findOne({ 'variants.barcode': { $in: barcodeKeys } });
     if (byVariant) {
+      const idx = matchVariantBarcode(byVariant as ProductMatch['product'], barcodeKeys);
       const variants = byVariant.variants ?? [];
-      const idx = variants.findIndex((v: { barcode?: string }) => String(v.barcode ?? '').trim() === b);
       return {
         product: byVariant as ProductMatch['product'],
         variantIndex: idx >= 0 ? idx : 0,
         matchedSku:
           idx >= 0 ? String(variants[idx]?.sku ?? byVariant.sku ?? '') : String(byVariant.sku ?? ''),
-        matchedBarcode: b,
+        matchedBarcode:
+          idx >= 0 ? String(variants[idx]?.barcode ?? b) : String(byVariant.barcode ?? b),
       };
+    }
+
+    const whRow = await WarehouseStock.findOne({ barcode: { $in: barcodeKeys } }).lean();
+    if (whRow?.productId) {
+      const fromWarehouse = await Product.findById(whRow.productId);
+      if (fromWarehouse) {
+        const idx = matchVariantBarcode(fromWarehouse as ProductMatch['product'], barcodeKeys);
+        const variants = fromWarehouse.variants ?? [];
+        const variantSku = String(whRow.variantSku ?? '').trim();
+        const idxBySku =
+          variantSku && idx < 0
+            ? variants.findIndex((v: { sku?: string }) => String(v.sku ?? '').trim() === variantSku)
+            : idx;
+        const useIdx = idxBySku >= 0 ? idxBySku : idx;
+        return {
+          product: fromWarehouse as ProductMatch['product'],
+          variantIndex: useIdx >= 0 ? useIdx : -1,
+          matchedSku:
+            useIdx >= 0
+              ? String(variants[useIdx]?.sku ?? fromWarehouse.sku ?? whRow.sku ?? '')
+              : String(whRow.sku ?? fromWarehouse.sku ?? ''),
+          matchedBarcode: String(whRow.barcode ?? b),
+        };
+      }
     }
   }
 

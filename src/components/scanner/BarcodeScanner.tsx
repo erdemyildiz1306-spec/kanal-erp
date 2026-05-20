@@ -27,9 +27,9 @@ const NATIVE_FORMATS = [
   "itf",
 ];
 
-export function normalizeBarcode(raw: string): string {
-  return raw.trim().replace(/\s+/g, "");
-}
+import { normalizeBarcode } from "@/lib/barcode-normalize";
+
+export { normalizeBarcode } from "@/lib/barcode-normalize";
 
 type NativeBarcode = {
   rawValue: string;

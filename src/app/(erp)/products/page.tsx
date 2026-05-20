@@ -16,6 +16,7 @@ import {
   Upload,
   CheckCircle2,
   X,
+  ScanBarcode,
 } from "lucide-react";
 import {
   generateEan13,
@@ -51,6 +52,7 @@ import {
 } from "@/lib/public-image-url";
 import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import StockBarcodePanel from "@/components/scanner/StockBarcodePanel";
 
 type CategoryLeaf = { categoryId: number; path: string; name?: string };
 
@@ -225,6 +227,7 @@ export default function ProductsPage() {
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
+  const [isBarcodeStockOpen, setIsBarcodeStockOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [newStockValue, setNewStockValue] = useState("");
   const [stockVariantRows, setStockVariantRows] = useState<
@@ -1808,6 +1811,14 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setIsBarcodeStockOpen(true)}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold"
+          >
+            <ScanBarcode size={18} />
+            <span>Barkod Giriş/Çıkış</span>
+          </button>
           <button
             onClick={syncCategories}
             disabled={categoryLoading}
@@ -3673,6 +3684,25 @@ export default function ProductsPage() {
         variant="danger"
         loading={bulkDeleting}
       />
+
+      <Modal
+        open={isBarcodeStockOpen}
+        onClose={() => setIsBarcodeStockOpen(false)}
+        title="Barkod ile stok giriş/çıkış"
+        subtitle="Okut, adet seç, stok ekle veya düş"
+        size="lg"
+        tone="emerald"
+        icon={<ScanBarcode size={18} className="text-emerald-600" />}
+        scrollBody
+      >
+        <StockBarcodePanel
+          variant="embedded"
+          syncChannels
+          onStockChanged={() => {
+            void fetchProducts();
+          }}
+        />
+      </Modal>
 
       <Modal
         open={isStockModalOpen && !!selectedProduct}
