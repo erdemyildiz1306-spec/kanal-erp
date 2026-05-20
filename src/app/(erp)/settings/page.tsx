@@ -176,6 +176,7 @@ export default function SettingsPage() {
     email: "",
     password: "",
   });
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -190,10 +191,26 @@ export default function SettingsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/settings?t=" + Date.now(), {
-        cache: "no-store",
-      });
+      const [res, meRes] = await Promise.all([
+        fetch("/api/settings?t=" + Date.now(), {
+          cache: "no-store",
+          credentials: "include",
+        }),
+        fetch("/api/auth/me", { cache: "no-store", credentials: "include" }),
+      ]);
       const data = await res.json();
+      const meData = await meRes.json().catch(() => ({ success: false }));
+      if (meData.success && meData.user?.id) {
+        setCurrentUserId(String(meData.user.id));
+        const fullName = String(meData.user.name ?? "").trim();
+        const nameParts = fullName.split(/\s+/).filter(Boolean);
+        setProfileData({
+          name: nameParts[0] ?? "",
+          surname: nameParts.slice(1).join(" "),
+          email: String(meData.user.email ?? "").trim(),
+          password: "",
+        });
+      }
       if (!res.ok || !data.success || !data.settings) {
         const serverMsg =
           typeof data.error === "string" && data.error.trim() !== ""
@@ -266,9 +283,49 @@ export default function SettingsPage() {
     load();
   }, [load]);
 
+  const saveProfile = async (): Promise<string | null> => {
+    if (!currentUserId) return null;
+    const fullName = [profileData.name, profileData.surname]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(" ");
+    const email = profileData.email.trim().toLowerCase();
+    const password = profileData.password.trim();
+    const body: Record<string, string> = {};
+    if (fullName) body.name = fullName;
+    if (email) body.email = email;
+    if (password) body.password = password;
+    if (Object.keys(body).length === 0) return null;
+
+    const userRes = await fetch(`/api/users/${currentUserId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    const userData = await userRes.json().catch(() => ({}));
+    if (!userRes.ok || !userData.success) {
+      return typeof userData.error === "string"
+        ? userData.error
+        : "Giriş bilgileri güncellenemedi.";
+    }
+    if (password) {
+      setProfileData((prev) => ({ ...prev, password: "" }));
+    }
+    return null;
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
+      if (activeTab === "general") {
+        const profileError = await saveProfile();
+        if (profileError) {
+          alert(profileError);
+          return;
+        }
+      }
+
       const brandIdRaw = String(integration.trendyolBrandId ?? "").trim();
       const brandNameRaw = String(integration.trendyolBrandName ?? "").trim();
 
@@ -386,7 +443,9 @@ export default function SettingsPage() {
         );
       } else {
         alert(
-          "Ayarlar kaydedildi. Satıcı ID ve marka bilgileri sunucuda saklandı."
+          activeTab === "general"
+            ? "Ayarlar ve giriş bilgileri kaydedildi."
+            : "Ayarlar kaydedildi. Satıcı ID ve marka bilgileri sunucuda saklandı."
         );
       }
     } catch {
@@ -550,8 +609,9 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="border-t border-slate-100 pt-4">
-                  <p className="text-xs text-slate-500 mb-3">
-                    Aşağıdaki alanlar yalnızca arayüz için; oturum (login) eklendiğinde kullanıcı modeline bağlanır.
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+                    Bu bölüm <strong>giriş e-posta ve şifrenizi</strong> günceller. Değiştirdikten sonra alttaki
+                    «Kaydet» ile sunucuya yazın; bir sonraki girişte yeni bilgiler geçerli olur.
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div className="space-y-1.5 relative">
@@ -591,7 +651,7 @@ export default function SettingsPage() {
                       <Mail size={16} className="absolute left-3.5 bottom-3 text-slate-400" />
                     </div>
                     <div className="space-y-1.5 relative">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Şifre (yerel demo)</label>
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Yeni şifre (boş bırak = değişmez)</label>
                       <input
                         type="password"
                         value={profileData.password}
