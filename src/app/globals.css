@@ -218,26 +218,20 @@ body {
     contain-intrinsic-size: auto 120px;
   }
 
-  /* Kamera görüntüsü kart içinde kırpılmasın */
-  .barcode-scanner-viewport,
-  .barcode-scanner-viewport video {
+  /* Kamera kartı — content-visibility decode'u bozar */
+  .scanner-card,
+  .scanner-card video {
     content-visibility: visible;
+    contain: none;
   }
 }
 
-.barcode-scanner-viewport video {
+.scanner-card video,
+.barcode-scanner-video {
   width: 100% !important;
-  height: auto !important;
   object-fit: cover;
-  border-radius: 0.75rem;
-}
-
-.barcode-scanner-viewport img[alt="Info icon"] {
-  display: none;
-}
-
-.barcode-scanner-viewport #qr-shaded-region {
-  border-color: rgb(16 185 129 / 0.85) !important;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 @media print {

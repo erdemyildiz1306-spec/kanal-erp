@@ -1,208 +1,289 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-
-const READER_ID = "barcode-reader-viewport";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library";
 
 const BARCODE_FORMATS = [
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.CODE_93,
-  Html5QrcodeSupportedFormats.ITF,
-  Html5QrcodeSupportedFormats.CODABAR,
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.CODE_93,
+  BarcodeFormat.ITF,
+  BarcodeFormat.CODABAR,
+];
+
+const NATIVE_FORMATS = [
+  "ean_13",
+  "ean_8",
+  "upc_a",
+  "upc_e",
+  "code_128",
+  "code_39",
+  "codabar",
+  "itf",
 ];
 
 export function normalizeBarcode(raw: string): string {
   return raw.trim().replace(/\s+/g, "");
 }
 
-type BarcodeScannerProps = {
-  active: boolean;
-  onScan: (code: string) => void;
-  onError?: (message: string) => void;
+type NativeBarcode = {
+  rawValue: string;
 };
 
-export default function BarcodeScanner({ active, onScan, onError }: BarcodeScannerProps) {
-  const scannerRef = useRef<Html5Qrcode | null>(null);
+type NativeBarcodeDetector = {
+  detect(source: ImageBitmapSource): Promise<NativeBarcode[]>;
+};
+
+declare global {
+  interface Window {
+    BarcodeDetector?: new (options?: { formats: string[] }) => NativeBarcodeDetector;
+  }
+}
+
+function supportsNativeBarcodeDetector(): boolean {
+  return typeof window !== "undefined" && typeof window.BarcodeDetector === "function";
+}
+
+async function pickBackCameraId(): Promise<string | undefined> {
+  const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+  if (devices.length === 0) return undefined;
+  const back = devices.find((device) =>
+    /back|rear|environment|arka|wide|tele/i.test(device.label)
+  );
+  return back?.deviceId ?? devices[devices.length - 1]?.deviceId;
+}
+
+export async function requestScannerStream(): Promise<MediaStream> {
+  const baseVideo = {
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+  };
+
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        ...baseVideo,
+        facingMode: { ideal: "environment" },
+      },
+    });
+  } catch {
+    const deviceId = await pickBackCameraId();
+    if (!deviceId) {
+      throw new Error("Kamera bulunamadı veya izin verilmedi.");
+    }
+    return navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        ...baseVideo,
+        deviceId: { exact: deviceId },
+      },
+    });
+  }
+}
+
+type BarcodeScannerProps = {
+  active: boolean;
+  stream: MediaStream | null;
+  onScan: (code: string) => void;
+  onError?: (message: string) => void;
+  onReady?: () => void;
+};
+
+export default function BarcodeScanner({
+  active,
+  stream,
+  onScan,
+  onError,
+  onReady,
+}: BarcodeScannerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const controlsRef = useRef<{ stop: () => void } | null>(null);
+  const rafRef = useRef<number | null>(null);
   const lastScanRef = useRef<{ code: string; at: number } | null>(null);
   const onScanRef = useRef(onScan);
   const onErrorRef = useRef(onError);
-  const [starting, setStarting] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  const onReadyRef = useRef(onReady);
+  const [live, setLive] = useState(false);
+  const [engine, setEngine] = useState<"native" | "zxing" | null>(null);
 
   useEffect(() => {
     onScanRef.current = onScan;
     onErrorRef.current = onError;
-  }, [onScan, onError]);
+    onReadyRef.current = onReady;
+  }, [onScan, onError, onReady]);
 
-  const stopScanner = useCallback(async () => {
-    const scanner = scannerRef.current;
-    scannerRef.current = null;
-    if (!scanner) return;
-    try {
-      if (scanner.isScanning) await scanner.stop();
-    } catch {
-      /* already stopped */
+  const stop = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
-    try {
-      scanner.clear();
-    } catch {
-      /* ignore */
+    controlsRef.current?.stop();
+    controlsRef.current = null;
+    const video = videoRef.current;
+    if (video) {
+      video.pause();
+      video.srcObject = null;
     }
+    setLive(false);
+    setEngine(null);
   }, []);
 
+  const emitScan = useCallback(
+    (raw: string) => {
+      const code = normalizeBarcode(raw);
+      if (!code || code.length < 4) return;
+
+      const now = Date.now();
+      const last = lastScanRef.current;
+      if (last && last.code === code && now - last.at < 1500) return;
+      lastScanRef.current = { code, at: now };
+
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate(40);
+      }
+
+      stop();
+      onScanRef.current(code);
+    },
+    [stop]
+  );
+
   useEffect(() => {
-    if (!active) {
-      void stopScanner();
-      setCameraError(null);
-      setStarting(false);
+    if (!active || !stream) {
+      stop();
       return;
     }
 
     let cancelled = false;
+    lastScanRef.current = null;
 
-    async function start() {
-      setStarting(true);
-      setCameraError(null);
-      lastScanRef.current = null;
+    async function attachStream() {
+      const video = videoRef.current;
+      const mediaStream = stream;
+      if (!video || !mediaStream) return;
 
-      await stopScanner();
-      if (cancelled) return;
-
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      if (cancelled || !document.getElementById(READER_ID)) return;
-
-      const viewWidth = Math.min(window.innerWidth - 40, 420);
-      const scanConfig = {
-        fps: 12,
-        qrbox: { width: viewWidth, height: Math.max(100, Math.round(viewWidth * 0.32)) },
-        aspectRatio: 1.777778,
-        disableFlip: false,
-        videoConstraints: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        } as MediaTrackConstraints,
-      };
-
-      const scannerConfig = {
-        formatsToSupport: BARCODE_FORMATS,
-        useBarCodeDetectorIfSupported: true,
-        verbose: false,
-      };
-
-      const handleSuccess = (decodedText: string) => {
-        const code = normalizeBarcode(decodedText);
-        if (!code || code.length < 4) return;
-
-        const now = Date.now();
-        const last = lastScanRef.current;
-        if (last && last.code === code && now - last.at < 2000) return;
-        lastScanRef.current = { code, at: now };
-
-        if (typeof navigator !== "undefined" && navigator.vibrate) {
-          navigator.vibrate(40);
-        }
-
-        void stopScanner().then(() => {
-          if (!cancelled) onScanRef.current(code);
-        });
-      };
-
-      const handleFrameError = () => {
-        /* expected while searching */
-      };
-
-      async function tryStart(
-        cameraIdOrConfig: string | MediaTrackConstraints
-      ): Promise<boolean> {
-        const scanner = new Html5Qrcode(READER_ID, scannerConfig);
-        scannerRef.current = scanner;
-        await scanner.start(cameraIdOrConfig, scanConfig, handleSuccess, handleFrameError);
-        return true;
-      }
+      video.setAttribute("playsinline", "true");
+      video.setAttribute("webkit-playsinline", "true");
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = mediaStream;
 
       try {
-        await tryStart({ facingMode: "environment" });
-        if (!cancelled) setStarting(false);
-        return;
+        await video.play();
       } catch {
-        await stopScanner();
+        if (!cancelled) onErrorRef.current?.("Kamera önizlemesi başlatılamadı.");
+        return;
       }
 
       if (cancelled) return;
+      setLive(true);
+      onReadyRef.current?.();
+
+      if (supportsNativeBarcodeDetector()) {
+        try {
+          const detector = new window.BarcodeDetector!({ formats: NATIVE_FORMATS });
+          setEngine("native");
+
+          const tick = async () => {
+            if (cancelled || !videoRef.current) return;
+            const el = videoRef.current;
+            if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+              try {
+                const codes = await detector.detect(el);
+                if (codes.length > 0 && codes[0]?.rawValue) {
+                  emitScan(codes[0].rawValue);
+                  return;
+                }
+              } catch {
+                /* frame decode miss */
+              }
+            }
+            rafRef.current = requestAnimationFrame(() => {
+              void tick();
+            });
+          };
+
+          rafRef.current = requestAnimationFrame(() => {
+            void tick();
+          });
+          return;
+        } catch {
+          /* fall through to zxing */
+        }
+      }
 
       try {
-        const cameras = await Html5Qrcode.getCameras();
-        if (cameras.length === 0) throw new Error("Kamera bulunamadı.");
+        const hints = new Map<DecodeHintType, unknown>();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, BARCODE_FORMATS);
+        hints.set(DecodeHintType.TRY_HARDER, true);
 
-        const backCamera = cameras.find((camera) =>
-          /back|rear|environment|arka|wide/i.test(camera.label)
-        );
-        const cameraId = backCamera?.id ?? cameras[cameras.length - 1]?.id;
-        if (!cameraId) throw new Error("Kamera seçilemedi.");
+        const reader = new BrowserMultiFormatReader(hints, {
+          delayBetweenScanAttempts: 120,
+          delayBetweenScanSuccess: 1500,
+          tryPlayVideoTimeout: 10000,
+        });
 
-        await tryStart(cameraId);
-        if (!cancelled) setStarting(false);
+        setEngine("zxing");
+        const controls = await reader.decodeFromStream(mediaStream, video, (result, error) => {
+          if (cancelled) return;
+          if (result) {
+            emitScan(result.getText());
+            return;
+          }
+          if (error && !(error instanceof NotFoundException)) {
+            /* ignore transient decode errors */
+          }
+        });
+        controlsRef.current = controls;
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Kamera açılamadı. İzin verildiğinden emin olun.";
+          err instanceof Error ? err.message : "Barkod tarayıcı başlatılamadı.";
         if (!cancelled) {
-          setCameraError(message);
           onErrorRef.current?.(message);
-          setStarting(false);
         }
       }
     }
 
-    void start();
+    void attachStream();
 
     return () => {
       cancelled = true;
-      void stopScanner();
+      stop();
     };
-  }, [active, stopScanner]);
-
-  useEffect(() => {
-    if (!active) return;
-
-    const onVisibilityChange = () => {
-      const scanner = scannerRef.current;
-      if (!scanner?.isScanning) return;
-      if (document.hidden) {
-        scanner.pause(true);
-      } else {
-        try {
-          scanner.resume();
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [active]);
+  }, [active, stream, stop, emitScan]);
 
   if (!active) return null;
 
   return (
-    <div className="erp-card overflow-hidden p-2">
-      <div id={READER_ID} className="barcode-scanner-viewport w-full min-h-[220px] rounded-xl overflow-hidden bg-black" />
-      {starting ? (
-        <p className="text-center py-3 text-sm erp-muted">Kamera açılıyor…</p>
-      ) : null}
-      {cameraError ? (
-        <p className="text-center px-3 py-3 text-sm text-red-600 dark:text-red-400">{cameraError}</p>
-      ) : null}
-      {!starting && !cameraError ? (
-        <p className="text-center pb-2 text-xs erp-muted">Barkodu yatay tutun, iyi aydınlatılmış alanda tarayın</p>
-      ) : null}
+    <div className="scanner-card overflow-hidden p-2 rounded-2xl border border-[var(--erp-border)] bg-[var(--erp-surface)]">
+      <div className="relative w-full min-h-[240px] rounded-xl overflow-hidden bg-black">
+        <video
+          ref={videoRef}
+          className="barcode-scanner-video w-full h-[min(52vh,360px)] object-cover"
+          autoPlay
+          muted
+          playsInline
+        />
+        <div className="pointer-events-none absolute inset-x-6 top-1/2 -translate-y-1/2 h-24 border-2 border-emerald-400/90 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+        {live ? (
+          <span className="absolute top-3 left-3 text-[11px] font-semibold px-2 py-1 rounded-full bg-emerald-600 text-white">
+            {engine === "native" ? "Hızlı tarama" : "Taranıyor…"}
+          </span>
+        ) : (
+          <span className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
+            Kamera hazırlanıyor…
+          </span>
+        )}
+      </div>
+      <p className="text-center pb-2 pt-2 text-xs erp-muted">
+        Barkodu yatay tutun, yeşil çerçeveye hizalayın
+      </p>
     </div>
   );
 }

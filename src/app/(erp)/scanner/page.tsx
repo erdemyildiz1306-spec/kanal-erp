@@ -4,7 +4,10 @@ import { useCallback, useState } from "react";
 import { Camera, Package, CheckCircle, Minus, Plus, RotateCcw, AlertCircle } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import { useToast } from "@/components/providers/ToastProvider";
-import BarcodeScanner, { normalizeBarcode } from "@/components/scanner/BarcodeScanner";
+import BarcodeScanner, {
+  normalizeBarcode,
+  requestScannerStream,
+} from "@/components/scanner/BarcodeScanner";
 
 type ProductRow = {
   _id: string;
@@ -21,8 +24,19 @@ export default function ScannerPage() {
   const [productDetails, setProductDetails] = useState<ProductRow | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [openingCamera, setOpeningCamera] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [busy, setBusy] = useState(false);
   const [manualCode, setManualCode] = useState("");
+
+  const stopCamera = useCallback(() => {
+    setCameraStream((prev) => {
+      prev?.getTracks().forEach((track) => track.stop());
+      return null;
+    });
+    setScanning(false);
+    setOpeningCamera(false);
+  }, []);
 
   const fetchProduct = useCallback(
     async (rawCode: string) => {
@@ -52,20 +66,44 @@ export default function ScannerPage() {
     [toast]
   );
 
+  const openCamera = useCallback(async () => {
+    if (openingCamera || scanning) return;
+    setOpeningCamera(true);
+    setLookupError(null);
+
+    try {
+      const stream = await requestScannerStream();
+      setCameraStream((prev) => {
+        prev?.getTracks().forEach((track) => track.stop());
+        return stream;
+      });
+      setScanning(true);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Kamera açılamadı. Tarayıcı izni verin ve HTTPS kullanın.";
+      toast.error("Kamera hatası", message);
+      setScanning(false);
+    } finally {
+      setOpeningCamera(false);
+    }
+  }, [openingCamera, scanning, toast]);
+
   const handleScan = useCallback(
     (code: string) => {
-      setScanning(false);
+      stopCamera();
       void fetchProduct(code);
     },
-    [fetchProduct]
+    [fetchProduct, stopCamera]
   );
 
   const handleCameraError = useCallback(
     (message: string) => {
-      setScanning(false);
+      stopCamera();
       toast.error("Kamera hatası", message);
     },
-    [toast]
+    [stopCamera, toast]
   );
 
   const updateStock = async (delta: number) => {
@@ -122,11 +160,12 @@ export default function ScannerPage() {
           </div>
           <button
             type="button"
-            onClick={() => setScanning(true)}
-            className="erp-btn erp-btn-primary w-full text-base"
+            disabled={openingCamera}
+            onClick={() => void openCamera()}
+            className="erp-btn erp-btn-primary w-full text-base disabled:opacity-60"
           >
             <Camera size={22} />
-            Kamerayı Aç
+            {openingCamera ? "Kamera açılıyor…" : "Kamerayı Aç"}
           </button>
           <div className="pt-2 border-t border-[var(--erp-border)] space-y-2">
             <label className="text-sm font-semibold text-[var(--erp-text)]">Manuel barkod / SKU</label>
@@ -151,12 +190,17 @@ export default function ScannerPage() {
         </div>
       ) : null}
 
-      <BarcodeScanner active={scanning} onScan={handleScan} onError={handleCameraError} />
+      <BarcodeScanner
+        active={scanning}
+        stream={cameraStream}
+        onScan={handleScan}
+        onError={handleCameraError}
+      />
 
       {scanning ? (
         <button
           type="button"
-          onClick={() => setScanning(false)}
+          onClick={stopCamera}
           className="erp-btn erp-btn-ghost w-full mt-3"
         >
           Taramayı İptal Et
@@ -183,7 +227,7 @@ export default function ScannerPage() {
               type="button"
               onClick={() => {
                 resetScan();
-                setScanning(true);
+                void openCamera();
               }}
               className="erp-btn erp-btn-primary"
             >
@@ -244,7 +288,7 @@ export default function ScannerPage() {
             type="button"
             onClick={() => {
               resetScan();
-              setScanning(true);
+              void openCamera();
             }}
             className="erp-btn erp-btn-secondary w-full"
           >
