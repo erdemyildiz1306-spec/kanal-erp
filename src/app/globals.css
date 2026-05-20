@@ -128,27 +128,45 @@ body {
   opacity: 0.85;
 }
 
-/** Stok adedi — kompakt kutu, APK WebView'da rakam görünür */
+/** Stok adedi — orijinal boyut; APK WebView'da rakam görünürlüğü */
 .erp-stock-input {
   width: 100%;
-  min-height: unset;
+  min-width: 4.5rem;
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
-  border: 1px solid var(--erp-border);
-  background: var(--erp-surface);
-  color: var(--erp-text);
-  -webkit-text-fill-color: var(--erp-text);
+  border: 1px solid #cbd5e1;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a;
   font-size: 0.875rem;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
   line-height: 1.25;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  opacity: 1 !important;
+  -webkit-opacity: 1 !important;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .erp-stock-input:focus {
   outline: none;
-  border-color: var(--erp-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--erp-accent) 22%, transparent);
+  border-color: #4a5d45;
+  box-shadow: 0 0 0 2px rgba(74, 93, 69, 0.25);
+}
+
+.dark .erp-stock-input {
+  background-color: #1e2420 !important;
+  color: #f5f5f4 !important;
+  -webkit-text-fill-color: #f5f5f4 !important;
+  caret-color: #f5f5f4;
+  border-color: #2f3832;
+}
+
+.dark .erp-stock-input:focus {
+  border-color: #9cb89a;
+  box-shadow: 0 0 0 2px rgba(156, 184, 154, 0.35);
 }
 
 .erp-btn {
