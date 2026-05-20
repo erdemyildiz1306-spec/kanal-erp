@@ -4,19 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, ShoppingBag, Eye, Ban, Pencil } from "lucide-react";
 import CustomerOrderShop from "@/components/portal/CustomerOrderShop";
 import ConfirmModal from "@/components/ui/ConfirmModal";
-
-function fmt(n: number) {
-  return `₺${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-const statusStyle: Record<string, string> = {
-  Beklemede: "bg-amber-500/20 text-amber-200 border-amber-400/30",
-  Yeni: "bg-sky-500/20 text-sky-200 border-sky-400/30",
-  Hazırlanıyor: "bg-violet-500/20 text-violet-200 border-violet-400/30",
-  Kargolandı: "bg-blue-500/20 text-blue-200 border-blue-400/30",
-  "Teslim Edildi": "bg-emerald-500/20 text-emerald-200 border-emerald-400/30",
-  "İptal Edildi": "bg-red-500/20 text-red-200 border-red-400/30",
-};
+import { fmtMoney, portalStatusBadge } from "@/lib/portal-ui";
 
 type OrderRow = {
   _id: string;
@@ -76,16 +64,12 @@ export default function PortalOrdersPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="rounded-2xl bg-white/10 border border-white/10 px-4 py-3 flex items-center gap-2">
-          <ShoppingBag size={18} />
-          <span className="font-bold">Siparişlerim</span>
-          <span className="ml-auto text-sm text-violet-200">{orders.length} kayıt</span>
+        <div className="erp-card px-4 py-3 flex items-center gap-2 flex-1 min-w-[12rem]">
+          <ShoppingBag size={18} className="text-[var(--erp-accent)]" />
+          <span className="font-bold text-[var(--erp-text)]">Siparişlerim</span>
+          <span className="ml-auto text-sm erp-muted">{orders.length} kayıt</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setShopOpen(true)}
-          className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 font-bold shadow-lg hover:scale-[1.02] transition-transform"
-        >
+        <button type="button" onClick={() => setShopOpen(true)} className="erp-btn erp-btn-primary">
           <Plus size={18} /> Sipariş Ver
         </button>
       </div>
@@ -93,52 +77,43 @@ export default function PortalOrdersPage() {
       {loading ? (
         <div className="space-y-3 animate-pulse">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 rounded-2xl bg-white/10" />
+            <div key={i} className="erp-card h-24" />
           ))}
         </div>
       ) : orders.length === 0 ? (
-        <div className="p-10 text-center rounded-2xl bg-white/5 border border-white/10">
-          <p className="text-violet-200 mb-4">Henüz sipariş yok.</p>
-          <button
-            type="button"
-            onClick={() => setShopOpen(true)}
-            className="px-5 py-2.5 rounded-xl bg-violet-600 font-semibold"
-          >
+        <div className="erp-card p-10 text-center">
+          <p className="erp-muted mb-4">Henüz sipariş yok.</p>
+          <button type="button" onClick={() => setShopOpen(true)} className="erp-btn erp-btn-primary">
             İlk siparişinizi verin
           </button>
         </div>
       ) : (
         <ul className="space-y-3">
           {orders.map((o) => (
-            <li
-              key={o._id}
-              className="rounded-2xl bg-white/5 border border-white/10 p-4 hover:bg-white/10 transition-colors"
-            >
+            <li key={o._id} className="erp-card p-4 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-bold text-lg">{o.orderNumber}</p>
+                  <p className="font-bold text-lg text-[var(--erp-text)]">{o.orderNumber}</p>
                   {o.createdAt ? (
-                    <p className="text-xs text-violet-300 mt-0.5">
+                    <p className="text-xs erp-muted mt-0.5">
                       {new Date(o.createdAt).toLocaleString("tr-TR")}
                     </p>
                   ) : null}
                 </div>
                 <div className="text-right">
                   <span
-                    className={`inline-block text-[10px] font-bold uppercase px-2.5 py-1 rounded-lg border ${
-                      statusStyle[o.status] ?? "bg-white/10 text-violet-200 border-white/20"
-                    }`}
+                    className={`inline-block text-[10px] font-bold uppercase px-2.5 py-1 rounded-lg border ${portalStatusBadge(o.status)}`}
                   >
                     {o.status}
                   </span>
-                  <p className="font-black text-xl mt-2 tabular-nums">{fmt(Number(o.totalAmount) || 0)}</p>
+                  <p className="font-black text-xl mt-2 tabular-nums">{fmtMoney(Number(o.totalAmount) || 0)}</p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-white/10">
+              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--erp-border)]">
                 <button
                   type="button"
                   onClick={() => setDetail(o)}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 inline-flex items-center gap-1"
+                  className="erp-btn erp-btn-ghost text-xs min-h-0 py-1.5 px-3"
                 >
                   <Eye size={12} /> Detay
                 </button>
@@ -146,7 +121,7 @@ export default function PortalOrdersPage() {
                   <button
                     type="button"
                     onClick={() => setCancelTarget(o)}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-500/20 text-red-200 inline-flex items-center gap-1"
+                    className="erp-btn erp-btn-ghost text-xs min-h-0 py-1.5 px-3 text-red-600 border-red-200"
                   >
                     <Ban size={12} /> İptal
                   </button>
@@ -158,42 +133,39 @@ export default function PortalOrdersPage() {
       )}
 
       {shopOpen ? (
-        <CustomerOrderShop
-          onClose={() => setShopOpen(false)}
-          onSuccess={() => void load()}
-        />
+        <CustomerOrderShop onClose={() => setShopOpen(false)} onSuccess={() => void load()} />
       ) : null}
 
       {detail ? (
-        <div className="fixed inset-0 z-[150] bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-white/15 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-4">
+        <div className="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4">
+          <div className="erp-card w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-4">
             <div className="flex justify-between items-start">
               <div>
                 <h3 className="font-bold text-lg">{detail.orderNumber}</h3>
-                <p className="text-sm text-violet-300">{detail.status}</p>
+                <p className="text-sm erp-muted">{detail.status}</p>
               </div>
-              <button type="button" onClick={() => setDetail(null)} className="text-violet-300 hover:text-white">
+              <button type="button" onClick={() => setDetail(null)} className="erp-btn erp-btn-ghost min-h-0 p-2">
                 ✕
               </button>
             </div>
             {detail.notes ? (
-              <p className="text-sm bg-white/5 rounded-xl p-3">
-                <span className="text-violet-400 text-xs uppercase">Not</span>
+              <p className="text-sm bg-[var(--erp-surface-2)] rounded-xl p-3">
+                <span className="erp-muted text-xs uppercase">Not</span>
                 <br />
                 {detail.notes}
               </p>
             ) : null}
             {(detail.cargoCompany || detail.trackingNumber) && (
-              <div className="text-sm bg-white/5 rounded-xl p-3 space-y-1">
-                <p className="text-violet-400 text-xs uppercase">Kargo</p>
+              <div className="text-sm bg-[var(--erp-surface-2)] rounded-xl p-3 space-y-1">
+                <p className="erp-muted text-xs uppercase">Kargo</p>
                 {detail.cargoCompany ? <p>{detail.cargoCompany}</p> : null}
                 {detail.trackingNumber ? (
-                  <p className="font-mono text-violet-200">Takip: {detail.trackingNumber}</p>
+                  <p className="font-mono erp-muted">Takip: {detail.trackingNumber}</p>
                 ) : null}
               </div>
             )}
             <table className="w-full text-xs">
-              <thead className="text-violet-400">
+              <thead className="erp-muted">
                 <tr>
                   <th className="text-left py-1">Ürün</th>
                   <th className="text-right py-1">Adet</th>
@@ -202,17 +174,17 @@ export default function PortalOrdersPage() {
               </thead>
               <tbody>
                 {(detail.items ?? []).map((it, i) => (
-                  <tr key={i} className="border-t border-white/5">
+                  <tr key={i} className="border-t border-[var(--erp-border)]">
                     <td className="py-2">{it.productName || it.sku}</td>
                     <td className="py-2 text-right">{it.quantity}</td>
                     <td className="py-2 text-right">
-                      {fmt((Number(it.unitPrice) || 0) * (Number(it.quantity) || 1))}
+                      {fmtMoney((Number(it.unitPrice) || 0) * (Number(it.quantity) || 1))}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="text-right font-black text-lg">{fmt(Number(detail.totalAmount) || 0)}</p>
+            <p className="text-right font-black text-lg">{fmtMoney(Number(detail.totalAmount) || 0)}</p>
             {detail.status === "Beklemede" && (
               <button
                 type="button"
@@ -220,7 +192,7 @@ export default function PortalOrdersPage() {
                   setCancelTarget(detail);
                   setDetail(null);
                 }}
-                className="w-full py-2 rounded-xl bg-red-500/20 text-red-200 text-sm font-semibold flex items-center justify-center gap-1"
+                className="erp-btn erp-btn-ghost w-full text-red-600 border-red-200"
               >
                 <Pencil size={14} /> Siparişi iptal et
               </button>

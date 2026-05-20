@@ -2,10 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Wallet, Receipt } from "lucide-react";
-
-function fmt(n: number) {
-  return `₺${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { fmtMoney } from "@/lib/portal-ui";
 
 export default function PortalPaymentsPage() {
   const [loading, setLoading] = useState(true);
@@ -31,43 +28,52 @@ export default function PortalPaymentsPage() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-gradient-to-br from-rose-500/30 to-orange-500/20 border border-white/15 p-5">
-          <p className="text-violet-200 text-sm flex items-center gap-1">
+        <div className="erp-card p-5 border-l-4 border-l-red-400">
+          <p className="text-sm erp-muted flex items-center gap-1">
             <Wallet size={14} /> Güncel borç
           </p>
-          <p className="text-3xl font-black mt-1 tabular-nums">{fmt(balance)}</p>
+          <p className="text-3xl font-black mt-1 tabular-nums text-[var(--erp-text)]">{fmtMoney(balance)}</p>
         </div>
-        <div className="rounded-2xl bg-gradient-to-br from-emerald-500/30 to-teal-500/20 border border-white/15 p-5">
-          <p className="text-violet-200 text-sm flex items-center gap-1">
+        <div className="erp-card p-5 border-l-4 border-l-emerald-500">
+          <p className="text-sm erp-muted flex items-center gap-1">
             <Receipt size={14} /> Toplam tahsilat
           </p>
-          <p className="text-3xl font-black mt-1 tabular-nums text-emerald-100">{fmt(totalPaid)}</p>
+          <p className="text-3xl font-black mt-1 tabular-nums text-emerald-700 dark:text-emerald-300">
+            {fmtMoney(totalPaid)}
+          </p>
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/10 font-bold">Tahsilat geçmişi</div>
+      <div className="erp-card overflow-hidden">
+        <div className="px-4 py-3 border-b border-[var(--erp-border)] font-bold text-[var(--erp-text)]">
+          Tahsilat geçmişi
+        </div>
         {loading ? (
           <div className="p-6 space-y-3 animate-pulse">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-10 rounded-lg bg-white/10" />
+              <div key={i} className="h-10 rounded-lg bg-[var(--erp-surface-2)]" />
             ))}
           </div>
         ) : payments.length === 0 ? (
-          <p className="p-6 text-violet-200 text-sm">Kayıtlı ödeme yok.</p>
+          <p className="p-6 erp-muted text-sm">Kayıtlı ödeme yok.</p>
         ) : (
-          <ul className="divide-y divide-white/5">
+          <ul className="divide-y divide-[var(--erp-border)]">
             {payments.map((p, i) => (
-              <li key={i} className="px-4 py-3.5 flex justify-between items-center text-sm hover:bg-white/5">
+              <li
+                key={i}
+                className="px-4 py-3.5 flex justify-between items-center text-sm hover:bg-[var(--erp-surface-2)]"
+              >
                 <div>
-                  <p className="font-medium">{p.description || "Tahsilat"}</p>
+                  <p className="font-medium text-[var(--erp-text)]">{p.description || "Tahsilat"}</p>
                   {p.createdAt ? (
-                    <p className="text-xs text-violet-300 mt-0.5">
+                    <p className="text-xs erp-muted mt-0.5">
                       {new Date(p.createdAt).toLocaleString("tr-TR")}
                     </p>
                   ) : null}
                 </div>
-                <span className="font-bold text-emerald-300 tabular-nums">{fmt(Number(p.amount) || 0)}</span>
+                <span className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">
+                  {fmtMoney(Number(p.amount) || 0)}
+                </span>
               </li>
             ))}
           </ul>
