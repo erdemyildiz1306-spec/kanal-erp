@@ -61,6 +61,13 @@ cd mobile-shell/android; .\gradlew.bat assembleDebug; cd ..; node scripts/copy-a
 
 Canlı URL: `capacitor.config.json` → `server.url` = `https://erp-stok.vercel.app`
 
+## Kamera (barkod okuma)
+
+APK'da barkod için **Android kamera izni** gerekir. `npm run sync` sonrası `scripts/patch-android.js` manifest'e `CAMERA` iznini ekler. Yeni APK derledikten sonra telefonda:
+
+1. KanalERP → **Kamerayı Aç** → «İzin ver»
+2. Reddettiyseniz: **Ayarlar → Uygulamalar → KanalERP → İzinler → Kamera**
+
 ## Ortam değişkeni
 
 `.env.local`:

@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@capacitor/camera": "^7.0.5",
+    "@capacitor/core": "^7.6.5",
     "@vercel/blob": "^2.4.0",
     "@zxing/browser": "^0.2.0",
     "@zxing/library": "^0.22.0",

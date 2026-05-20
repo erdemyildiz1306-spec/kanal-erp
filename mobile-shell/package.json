@@ -3,13 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "sync": "npx cap sync android",
+    "sync": "npx cap sync android && node scripts/patch-android.js",
     "open": "npx cap open android",
-    "build:apk": "cd android && gradlew.bat assembleDebug && cd .. && node scripts/copy-apk.js"
+    "patch": "node scripts/patch-android.js",
+    "build:apk": "npm run sync && cd android && gradlew.bat assembleDebug && cd .. && node scripts/copy-apk.js"
   },
   "dependencies": {
     "@capacitor/android": "^7.2.0",
     "@capacitor/app": "^7.0.1",
+    "@capacitor/camera": "^7.0.1",
     "@capacitor/core": "^7.2.0"
   },
   "devDependencies": {

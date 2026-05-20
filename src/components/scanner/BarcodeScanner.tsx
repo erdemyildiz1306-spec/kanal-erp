@@ -28,6 +28,10 @@ const NATIVE_FORMATS = [
 ];
 
 import { normalizeBarcode } from "@/lib/barcode-normalize";
+import {
+  ensureNativeCameraPermission,
+  mapCameraError,
+} from "@/lib/native-camera-permission";
 
 export { normalizeBarcode } from "@/lib/barcode-normalize";
 
@@ -59,9 +63,17 @@ async function pickBackCameraId(): Promise<string | undefined> {
 }
 
 export async function requestScannerStream(): Promise<MediaStream> {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    throw new Error(
+      "Bu cihazda kamera desteklenmiyor. Manuel barkod girişini kullanın veya uygulamayı güncelleyin."
+    );
+  }
+
+  await ensureNativeCameraPermission();
+
   const baseVideo = {
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
   };
 
   try {
@@ -72,18 +84,20 @@ export async function requestScannerStream(): Promise<MediaStream> {
         facingMode: { ideal: "environment" },
       },
     });
-  } catch {
-    const deviceId = await pickBackCameraId();
-    if (!deviceId) {
-      throw new Error("Kamera bulunamadı veya izin verilmedi.");
+  } catch (firstErr) {
+    try {
+      const deviceId = await pickBackCameraId();
+      if (!deviceId) throw firstErr;
+      return await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          ...baseVideo,
+          deviceId: { exact: deviceId },
+        },
+      });
+    } catch (secondErr) {
+      throw mapCameraError(secondErr ?? firstErr);
     }
-    return navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        ...baseVideo,
-        deviceId: { exact: deviceId },
-      },
-    });
   }
 }
 
