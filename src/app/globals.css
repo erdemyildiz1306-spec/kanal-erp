@@ -58,6 +58,8 @@ body {
   color: var(--erp-text);
   font-family: var(--font-inter, system-ui, -apple-system, sans-serif);
   overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .touch-target {
@@ -107,8 +109,23 @@ body {
 
 .erp-input:focus {
   outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--erp-accent) 25%, transparent);
   border-color: var(--erp-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--erp-accent) 25%, transparent);
+}
+
+@supports not (color: color-mix(in srgb, white, black)) {
+  .erp-input:focus {
+    box-shadow: 0 0 0 3px rgba(74, 93, 69, 0.28);
+  }
+
+  .dark .erp-input:focus {
+    box-shadow: 0 0 0 3px rgba(156, 184, 154, 0.35);
+  }
+}
+
+.erp-input::placeholder {
+  color: var(--erp-text-muted);
+  opacity: 0.85;
 }
 
 .erp-btn {
@@ -213,12 +230,18 @@ body {
 }
 
 @media (max-width: 1023px) {
+  /* content-visibility Android WebView'da kart/yazı kaybına yol açar */
   .erp-card {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 120px;
+    content-visibility: visible;
+    contain: none;
   }
 
-  /* Kamera kartı — content-visibility decode'u bozar */
+  /* Bulanık arka plan metni silik gösterir (APK WebView) */
+  :where(.backdrop-blur, .backdrop-blur-sm, .backdrop-blur-md, .backdrop-blur-xl, .backdrop-blur-\[2px\]) {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
   .scanner-card,
   .scanner-card video {
     content-visibility: visible;
@@ -232,6 +255,72 @@ body {
   object-fit: cover;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
+}
+
+/* Eski sayfalardaki sabit slate/white sınıfları — koyu temada okunabilirlik */
+.dark :where(.text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600) {
+  color: var(--erp-text);
+}
+
+.dark :where(.text-slate-500, .text-slate-400, .text-slate-300) {
+  color: var(--erp-text-muted);
+}
+
+.dark :where(.bg-white, .bg-white\/70, .bg-white\/80) {
+  background-color: var(--erp-surface);
+}
+
+.dark :where(.bg-slate-50, .bg-slate-50\/80, .bg-slate-100) {
+  background-color: var(--erp-surface-2);
+}
+
+.dark :where(.hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, .hover\:bg-white\/80:hover) {
+  background-color: var(--erp-surface-2);
+}
+
+.dark :where(.border-slate-100, .border-slate-200, .border-slate-200\/80, .border-slate-300) {
+  border-color: var(--erp-border);
+}
+
+.dark :where(.bg-amber-100) { background-color: rgba(120, 53, 15, 0.38); }
+.dark :where(.text-amber-800, .text-amber-700) { color: #fcd34d; }
+.dark :where(.border-amber-200) { border-color: rgba(251, 191, 36, 0.35); }
+
+.dark :where(.bg-blue-100) { background-color: rgba(30, 58, 138, 0.38); }
+.dark :where(.text-blue-800, .text-blue-700) { color: #93c5fd; }
+.dark :where(.border-blue-200, .border-blue-100) { border-color: rgba(96, 165, 250, 0.35); }
+
+.dark :where(.bg-violet-100) { background-color: rgba(76, 29, 149, 0.38); }
+.dark :where(.text-violet-800) { color: #c4b5fd; }
+.dark :where(.border-violet-100, .border-violet-200) { border-color: rgba(167, 139, 250, 0.35); }
+
+.dark :where(.bg-emerald-100) { background-color: rgba(6, 78, 59, 0.38); }
+.dark :where(.text-emerald-800, .text-emerald-700) { color: #6ee7b7; }
+.dark :where(.border-emerald-100, .border-emerald-200) { border-color: rgba(52, 211, 153, 0.35); }
+
+.dark :where(.bg-red-100) { background-color: rgba(127, 29, 29, 0.38); }
+.dark :where(.text-red-800, .text-red-700, .text-red-600) { color: #fca5a5; }
+.dark :where(.border-red-200) { border-color: rgba(248, 113, 113, 0.35); }
+
+.dark :where(.bg-orange-100) { background-color: rgba(124, 45, 18, 0.38); }
+.dark :where(.text-orange-800) { color: #fdba74; }
+.dark :where(.border-orange-200) { border-color: rgba(251, 146, 60, 0.35); }
+
+.dark :where(.bg-purple-100) { background-color: rgba(88, 28, 135, 0.38); }
+.dark :where(.text-purple-800) { color: #d8b4fe; }
+
+.dark :where(.bg-sky-100) { background-color: rgba(12, 74, 110, 0.38); }
+.dark :where(.text-sky-800) { color: #7dd3fc; }
+.dark :where(.border-sky-200) { border-color: rgba(56, 189, 248, 0.35); }
+
+.dark :where(.from-violet-50, .from-blue-50, .from-emerald-50) {
+  --tw-gradient-from: var(--erp-surface-2) var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(255 255 255 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+.dark :where(.to-white) {
+  --tw-gradient-to: var(--erp-surface) var(--tw-gradient-to-position);
 }
 
 @media print {

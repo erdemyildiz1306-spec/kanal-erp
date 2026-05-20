@@ -16,10 +16,13 @@ const sizeClass: Record<ModalSize, string> = {
 type ModalTone = "default" | "violet" | "blue" | "emerald";
 
 const toneHeader: Record<ModalTone, string> = {
-  default: "border-slate-100",
-  violet: "border-violet-100 bg-gradient-to-r from-violet-50 to-white",
-  blue: "border-blue-100 bg-gradient-to-r from-blue-50 to-white",
-  emerald: "border-emerald-100 bg-gradient-to-r from-emerald-50 to-white",
+  default: "border-[var(--erp-border)] bg-[var(--erp-surface)]",
+  violet:
+    "border-[var(--erp-border)] bg-gradient-to-r from-violet-50 to-[var(--erp-surface)] dark:from-[var(--erp-surface-2)] dark:to-[var(--erp-surface)]",
+  blue:
+    "border-[var(--erp-border)] bg-gradient-to-r from-blue-50 to-[var(--erp-surface)] dark:from-[var(--erp-surface-2)] dark:to-[var(--erp-surface)]",
+  emerald:
+    "border-[var(--erp-border)] bg-gradient-to-r from-emerald-50 to-[var(--erp-surface)] dark:from-[var(--erp-surface-2)] dark:to-[var(--erp-surface)]",
 };
 
 type ModalProps = {
@@ -74,7 +77,7 @@ export default function Modal({
       <button
         type="button"
         aria-label="Kapat"
-        className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/55"
         onClick={onClose}
       />
       <div
@@ -86,23 +89,23 @@ export default function Modal({
           >
             <div className="min-w-0 flex items-start gap-3">
               {icon ? (
-                <div className="p-2 rounded-xl bg-white/80 border border-slate-100 shadow-sm shrink-0">
+                <div className="p-2 rounded-xl bg-[var(--erp-surface-2)] border border-[var(--erp-border)] shrink-0">
                   {icon}
                 </div>
               ) : null}
               <div className="min-w-0">
                 {title ? (
-                  <h3 className="text-lg font-bold text-slate-900 truncate">{title}</h3>
+                  <h3 className="text-lg font-bold text-[var(--erp-text)] truncate">{title}</h3>
                 ) : null}
                 {subtitle ? (
-                  <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
+                  <p className="text-sm erp-muted mt-0.5">{subtitle}</p>
                 ) : null}
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 shrink-0"
+              className="p-2 rounded-xl erp-muted hover:text-[var(--erp-text)] hover:bg-[var(--erp-surface-2)] shrink-0"
             >
               <X size={18} />
             </button>
@@ -118,7 +121,7 @@ export default function Modal({
           {children}
         </div>
         {footer ? (
-          <div className="shrink-0 px-6 py-4 border-t border-slate-100 bg-slate-50/80 rounded-b-2xl">
+          <div className="shrink-0 px-6 py-4 border-t border-[var(--erp-border)] bg-[var(--erp-surface-2)] rounded-b-2xl">
             {footer}
           </div>
         ) : null}

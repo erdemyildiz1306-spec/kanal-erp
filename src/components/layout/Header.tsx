@@ -195,7 +195,7 @@ export default function Header() {
   return (
     <>
       <header
-        className="h-14 lg:h-[4.25rem] bg-[var(--erp-header)] backdrop-blur border-b border-[var(--erp-border)] flex items-center justify-between px-4 lg:px-8 gap-3"
+        className="h-14 lg:h-[4.25rem] bg-[var(--erp-header)] lg:backdrop-blur border-b border-[var(--erp-border)] flex items-center justify-between px-4 lg:px-8 gap-3"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         <div className="flex items-center gap-3 min-w-0 lg:hidden">

@@ -41,6 +41,11 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://erp-stok.vercel.app" />
         <link rel="dns-prefetch" href="https://erp-stok.vercel.app" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var k='kanal-erp-theme',t=localStorage.getItem(k),d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();`,
+          }}
+        />
       </head>
       <body
         className={`${inter.variable} ${inter.className} bg-[var(--erp-bg)] text-[var(--erp-text)] antialiased print:bg-white`}

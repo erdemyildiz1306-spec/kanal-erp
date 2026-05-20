@@ -14,7 +14,7 @@ export default function MobileBottomNav({ onOpenMore }: Props) {
 
   return (
       <nav
-      className="lg:hidden fixed bottom-0 inset-x-0 z-50 border-t border-[var(--erp-border)] bg-[var(--erp-nav)] backdrop-blur-xl"
+      className="lg:hidden fixed bottom-0 inset-x-0 z-50 border-t border-[var(--erp-border)] bg-[var(--erp-nav)]"
       style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
       aria-label="Ana menü"
     >
