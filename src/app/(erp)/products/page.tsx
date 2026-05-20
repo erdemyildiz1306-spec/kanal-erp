@@ -897,7 +897,9 @@ export default function ProductsPage() {
     }
     return {
       ok: true,
-      message: data.message || "Trendyol oluşturma API'sine gönderildi.",
+      message:
+        data.message ||
+        "Trendyol onay kuyruğuna alındı. Satıcı panelinde «Onay bekleyenler» listesini kontrol edin.",
     };
   };
 
@@ -1017,7 +1019,7 @@ export default function ProductsPage() {
       }
       setModalActionMsg({
         kind: "success",
-        text: "Trendyol'a gönderildi. Onay bekleyenlerde birkaç dakika içinde görünür.",
+        text: published.message || "Trendyol onay kuyruğuna alındı. Panelde birkaç dakika içinde görünür.",
       });
       showTrendyolPublishFeedback("Trendyol'a Yayımla", 1, 1, []);
       await refreshProductsQuiet();

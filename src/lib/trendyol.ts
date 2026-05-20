@@ -185,6 +185,7 @@ export function getTrendyolProductWriteHeaders(
   return {
     ...getTrendyolAuthHeader(apiKey, apiSecret, sid),
     'X-Supplier-Id': sid,
+    storeFrontCode: 'TR',
   };
 }
 
@@ -1260,6 +1261,158 @@ async function postTrendyolProductCreateAttempt(
   return { ok: true, data: response.data };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function extractBatchRequestId(data: unknown): string {
+  if (!data || typeof data !== 'object') return '';
+  const o = data as Record<string, unknown>;
+  return String(o.batchRequestId ?? o.batchRequestID ?? '').trim();
+}
+
+function parseBatchItemFailures(data: unknown): string[] {
+  if (!data || typeof data !== 'object') return [];
+  const root = data as Record<string, unknown>;
+  const items = Array.isArray(root.items) ? root.items : [];
+  const errors: string[] = [];
+
+  for (const row of items) {
+    if (!row || typeof row !== 'object') continue;
+    const item = row as Record<string, unknown>;
+    const status = String(item.status ?? '').trim();
+    if (status === 'SUCCESS') continue;
+
+    const req =
+      item.requestItem && typeof item.requestItem === 'object'
+        ? (item.requestItem as Record<string, unknown>)
+        : undefined;
+    let barcode = String(req?.barcode ?? '').trim();
+    if (!barcode && req?.product && typeof req.product === 'object') {
+      barcode = String(
+        (req.product as Record<string, unknown>).barcode ?? ''
+      ).trim();
+    }
+
+    const reasons = Array.isArray(item.failureReasons)
+      ? item.failureReasons
+          .map((r) =>
+            typeof r === 'string'
+              ? r.trim()
+              : r && typeof r === 'object'
+                ? String(
+                    (r as Record<string, unknown>).message ??
+                      (r as Record<string, unknown>).detail ??
+                      JSON.stringify(r)
+                  ).trim()
+                : ''
+          )
+          .filter(Boolean)
+      : [];
+
+    const msg =
+      reasons.join(' · ') ||
+      String(item.failureReason ?? item.error ?? '').trim() ||
+      `Durum: ${status || 'FAILED'}`;
+
+    errors.push(barcode ? `${barcode}: ${msg}` : msg);
+  }
+
+  const failedCount = Number(root.failedItemCount ?? 0);
+  if (errors.length === 0 && failedCount > 0) {
+    errors.push(`${failedCount} satır Trendyol tarafından reddedildi (ayrıntı yok).`);
+  }
+
+  return errors;
+}
+
+export type TrendyolCreateBatchResult = {
+  submitResponse: unknown;
+  batchRequestId: string;
+  batchStatus: string;
+  failedItemCount: number;
+  itemErrors: string[];
+};
+
+/** Ürün create sonrası batchRequestId ile gerçek sonucu bekler (Trendyol kuyruk işlemi). */
+export async function pollTrendyolProductCreateBatch(
+  sellerId: string,
+  apiKey: string,
+  apiSecret: string,
+  batchRequestId: string,
+  opts?: { maxAttempts?: number; firstDelayMs?: number; delayMs?: number }
+): Promise<TrendyolCreateBatchResult> {
+  const maxAttempts = opts?.maxAttempts ?? 12;
+  const firstDelayMs = opts?.firstDelayMs ?? 2500;
+  const delayMs = opts?.delayMs ?? 3000;
+  const url = TrendyolEndpoints.batchRequestResult(sellerId, batchRequestId);
+  const headers = getTrendyolProductWriteHeaders(apiKey, apiSecret, sellerId);
+
+  let lastData: unknown = null;
+  let lastStatus = 'PENDING';
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await sleep(attempt === 0 ? firstDelayMs : delayMs);
+
+    const response = await axios.get(url, {
+      headers,
+      timeout: 60_000,
+      validateStatus: () => true,
+    });
+
+    if (response.status >= 400) {
+      if (attempt === maxAttempts - 1) {
+        throwTrendyolHttpError(
+          response.status,
+          response.data,
+          'batch-requests'
+        );
+      }
+      continue;
+    }
+
+    lastData = response.data;
+    const root = response.data as Record<string, unknown>;
+    lastStatus = String(root.status ?? '').trim() || 'UNKNOWN';
+    const failedItemCount = Number(root.failedItemCount ?? 0);
+    const itemErrors = parseBatchItemFailures(response.data);
+
+    if (
+      lastStatus === 'COMPLETED' ||
+      lastStatus === 'COMPLETED_WITH_ERRORS' ||
+      lastStatus === 'FAILED'
+    ) {
+      return {
+        submitResponse: null,
+        batchRequestId,
+        batchStatus: lastStatus,
+        failedItemCount,
+        itemErrors,
+      };
+    }
+
+    if (failedItemCount > 0 && itemErrors.length > 0) {
+      return {
+        submitResponse: null,
+        batchRequestId,
+        batchStatus: lastStatus,
+        failedItemCount,
+        itemErrors,
+      };
+    }
+  }
+
+  return {
+    submitResponse: null,
+    batchRequestId,
+    batchStatus: lastStatus || 'TIMEOUT',
+    failedItemCount: 0,
+    itemErrors: [
+      'Trendyol kuyruk sonucu henüz hazır değil. Birkaç dakika sonra Trendyol panelinde «Onay bekleyenler» veya «Toplu işlem» geçmişini kontrol edin.',
+    ],
+  };
+}
+
 export async function createTrendyolProductsBatch(
   sellerId: string,
   apiKey: string,
@@ -1290,7 +1443,26 @@ export async function createTrendyolProductsBatch(
 
   for (const attempt of attempts) {
     const result = await postTrendyolProductCreateAttempt(attempt, payload);
-    if (result.ok) return result.data;
+    if (result.ok) {
+      const batchRequestId = extractBatchRequestId(result.data);
+      if (!batchRequestId) {
+        return {
+          submitResponse: result.data,
+          batchRequestId: '',
+          batchStatus: 'SUBMITTED',
+          failedItemCount: 0,
+          itemErrors: [],
+        } satisfies TrendyolCreateBatchResult;
+      }
+
+      const polled = await pollTrendyolProductCreateBatch(
+        sellerId,
+        apiKey,
+        apiSecret,
+        batchRequestId
+      );
+      return { ...polled, submitResponse: result.data };
+    }
 
     if (result.html) {
       sawHtmlResponse = true;

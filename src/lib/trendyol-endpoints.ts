@@ -68,6 +68,9 @@ export const TrendyolEndpoints = {
   /** Ürün oluşturma v2 (apigw) */
   productCreateV2: (sellerId: string) =>
     `${TRENDYOL_PRODUCT_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/v2/products`,
+  /** Toplu istek sonucu (create/update) */
+  batchRequestResult: (sellerId: string, batchRequestId: string) =>
+    `${TRENDYOL_PRODUCT_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/products/batch-requests/${encodeURIComponent(batchRequestId)}`,
   /** Stok & fiyat (apigw) */
   priceAndInventoryIntegration: (sellerId: string) =>
     `${TRENDYOL_INVENTORY_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/products/price-and-inventory`,

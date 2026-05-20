@@ -292,6 +292,43 @@ export async function POST(request: Request) {
       items
     );
 
+    const batchFailed =
+      results.failedItemCount > 0 ||
+      results.itemErrors.length > 0 ||
+      results.batchStatus === 'FAILED' ||
+      results.batchStatus === 'COMPLETED_WITH_ERRORS';
+
+    if (batchFailed) {
+      const detail = results.itemErrors.slice(0, 5).join('\n');
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            detail ||
+            `Trendyol toplu istek reddetti (${results.batchStatus || 'FAILED'}).`,
+          batchRequestId: results.batchRequestId,
+          batchStatus: results.batchStatus,
+          itemErrors: results.itemErrors,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      results.batchStatus === 'TIMEOUT' ||
+      results.itemErrors.some((e) => e.includes('kuyruk sonucu'))
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: results.itemErrors[0] ?? 'Trendyol kuyruk sonucu alınamadı.',
+          batchRequestId: results.batchRequestId,
+          batchStatus: results.batchStatus,
+        },
+        { status: 502 }
+      );
+    }
+
     product.platforms = [...new Set([...(product.platforms ?? []), 'trendyol'])];
     product.trendyolAttributes = stored;
     product.integrations = product.integrations ?? {};
@@ -306,10 +343,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `${items.length} barkod Trendyol oluşturma API'sine gönderildi.`,
+      message: `${items.length} barkod Trendyol onay kuyruğuna alındı. Panelde «Onay bekleyenler» listesinde görünmesi birkaç dakika sürebilir.`,
       sent: items.length,
       attributesUsed: (items[0]?.attributes as unknown[])?.length ?? 0,
-      results,
+      batchRequestId: results.batchRequestId,
+      batchStatus: results.batchStatus,
+      results: results.submitResponse,
     });
   } catch (error: unknown) {
     return NextResponse.json(
