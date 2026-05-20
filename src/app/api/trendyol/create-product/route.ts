@@ -15,6 +15,7 @@ import {
   toTrendyolApiAttributes,
   validateRequiredAttributes,
   validateVariantDimensionsForPublish,
+  validateVariantTrendyolAttributeMapping,
   type TyAttributeField,
   type TyAttributeSelection,
   type TyAttributeFormValue,
@@ -150,6 +151,16 @@ export async function POST(request: Request) {
       );
       if (variantErr) {
         return NextResponse.json({ success: false, error: variantErr }, { status: 400 });
+      }
+      const mappingErr = validateVariantTrendyolAttributeMapping(
+        fields,
+        product.variants.map((v: { sizeLabel?: string; colorLabel?: string }) => ({
+          sizeLabel: v.sizeLabel,
+          colorLabel: v.colorLabel,
+        }))
+      );
+      if (mappingErr) {
+        return NextResponse.json({ success: false, error: mappingErr }, { status: 400 });
       }
       const missing = validateRequiredAttributes(
         fieldsForProductLevel(fields, true),

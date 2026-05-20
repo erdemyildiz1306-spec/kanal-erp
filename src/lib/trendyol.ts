@@ -213,10 +213,32 @@ function extractTrendyolErrorDetail(data: unknown): string {
     if (t.startsWith('<!DOCTYPE') || t.startsWith('<html')) {
       return 'Trendyol HTML yanıt döndü — ürün yayımlama uç noktası reddedildi. Sayfayı yenileyip tekrar deneyin; sorun sürerse Ayarlar > Trendyol Satıcı ID’yi kontrol edin.';
     }
-    return t.length > 240 ? `${t.slice(0, 240)}…` : t;
+    return t.length > 480 ? `${t.slice(0, 480)}…` : t;
   }
   if (typeof data !== 'object') return '';
   const o = data as Record<string, unknown>;
+
+  if (Array.isArray(o.errors) && o.errors.length) {
+    const parts = o.errors.slice(0, 6).map((row) => {
+      if (typeof row === 'string') return row.trim();
+      if (!row || typeof row !== 'object') return '';
+      const e = row as Record<string, unknown>;
+      const msg = String(e.message ?? e.detail ?? e.errorMessage ?? e.reason ?? '').trim();
+      const key = String(e.key ?? e.field ?? e.barcode ?? e.attributeId ?? '').trim();
+      if (key && msg) return `${key}: ${msg}`;
+      return msg || key || JSON.stringify(e).slice(0, 120);
+    });
+    const joined = parts.filter(Boolean).join(' · ');
+    if (joined) return joined;
+  }
+
+  if (Array.isArray(o.validationErrors) && o.validationErrors.length) {
+    return o.validationErrors
+      .slice(0, 6)
+      .map((v) => (typeof v === 'string' ? v : JSON.stringify(v)))
+      .join(' · ');
+  }
+
   if (o.error && typeof o.error === 'object') {
     const e = o.error as Record<string, unknown>;
     const title = String(e.title ?? '').trim();
@@ -228,7 +250,28 @@ function extractTrendyolErrorDetail(data: unknown): string {
     const v = o[key];
     if (typeof v === 'string' && v.trim()) return v.trim();
   }
+  try {
+    const compact = JSON.stringify(o);
+    if (compact && compact !== '{}' && compact.length < 500) return compact;
+  } catch {
+    /* ignore */
+  }
   return '';
+}
+
+function formatTrendyolHttpFailure(status: number, data: unknown, label?: string): string {
+  const parsed = extractTrendyolErrorDetail(data);
+  const prefix = label ? `[${label}] ` : '';
+  if (parsed) return `${prefix}HTTP ${status}: ${parsed}`;
+  return `${prefix}HTTP ${status}`;
+}
+
+function throwTrendyolHttpError(status: number, data: unknown, label?: string): never {
+  const err = new Error(formatTrendyolHttpFailure(status, data, label)) as Error & {
+    response?: { status: number; data: unknown };
+  };
+  err.response = { status, data };
+  throw err;
 }
 
 /** UI / toast için kısa Trendyol hata metni */
@@ -310,6 +353,15 @@ export function formatTrendyolAxiosError(error: unknown): string {
     const base = error.message || (status ? `HTTP ${status}` : 'İstek başarısız');
     return base;
   }
+
+  const withResponse = error as Error & { response?: { status?: number; data?: unknown } };
+  if (withResponse?.response?.status) {
+    return formatTrendyolHttpFailure(
+      withResponse.response.status,
+      withResponse.response.data
+    );
+  }
+
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -1260,11 +1312,7 @@ export async function createTrendyolProductsBatch(
       continue;
     }
 
-    const err = new Error(`HTTP ${result.status}`) as Error & {
-      response?: { status: number; data: unknown };
-    };
-    err.response = { status: result.status, data: result.data };
-    throw err;
+    throwTrendyolHttpError(result.status, result.data, attempt.label);
   }
 
   if (sawHtmlResponse) {
@@ -1274,14 +1322,11 @@ export async function createTrendyolProductsBatch(
   }
 
   if (lastJsonFailure) {
-    const err = new Error(`HTTP ${lastJsonFailure.status}`) as Error & {
-      response?: { status: number; data: unknown };
-    };
-    err.response = {
-      status: lastJsonFailure.status,
-      data: lastJsonFailure.data,
-    };
-    throw err;
+    throwTrendyolHttpError(
+      lastJsonFailure.status,
+      lastJsonFailure.data,
+      lastJsonFailure.label
+    );
   }
 
   throw new Error('Trendyol ürün oluşturma isteği başarısız.');

@@ -402,6 +402,53 @@ export function validateVariantDimensionsForPublish(
   return null;
 }
 
+/** Varyant beden/renk etiketlerinin Trendyol kategori listesine eşleşip eşleşmediğini kontrol eder */
+export function validateVariantTrendyolAttributeMapping(
+  fields: TyAttributeField[],
+  variants: Array<{ sizeLabel?: string; colorLabel?: string }>
+): string | null {
+  if (!variants.length) return null;
+  const { sizeField, colorField, ageField } = findVariantDimensionFields(fields);
+  const sizeLikeField = sizeField ?? ageField;
+
+  for (let i = 0; i < variants.length; i++) {
+    const v = variants[i];
+    const rowNo = i + 1;
+    const sizeLabel = String(v.sizeLabel ?? '').trim();
+    const colorLabel = String(v.colorLabel ?? '').trim();
+
+    if (sizeLikeField && sizeLabel) {
+      const mapped = selectionFromLabel(sizeLikeField, sizeLabel);
+      if (!mapped) {
+        const samples = sizeLikeField.values
+          .slice(0, 8)
+          .map((x) => x.name)
+          .join(', ');
+        return (
+          `Varyant satır ${rowNo}: «${sizeLabel}» bu Trendyol kategorisinde geçerli ${sizeLikeField.name} değeri değil.` +
+          (samples ? ` Örnek kabul edilen değerler: ${samples}` : ' Kategori özniteliklerini eşitleyip listeden seçin.')
+        );
+      }
+    }
+
+    if (colorField && colorLabel) {
+      const mapped = selectionFromLabel(colorField, colorLabel);
+      if (!mapped) {
+        const samples = colorField.values
+          .slice(0, 8)
+          .map((x) => x.name)
+          .join(', ');
+        return (
+          `Varyant satır ${rowNo}: «${colorLabel}» bu Trendyol kategorisinde geçerli ${colorField.name} değeri değil.` +
+          (samples ? ` Örnek: ${samples}` : '')
+        );
+      }
+    }
+  }
+
+  return null;
+}
+
 /** Trendyol v2 create API attributes dizisi (resmi: attributeValueId veya customAttributeValue) */
 export function toTrendyolApiAttributes(
   selections: TyAttributeSelection[]

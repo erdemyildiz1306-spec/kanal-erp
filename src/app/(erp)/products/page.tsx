@@ -888,12 +888,10 @@ export default function ProductsPage() {
     }
     if (!data.success) {
       const errText = String(data.error || "").trim();
-      const short =
-        errText.length > 280 ? `${errText.slice(0, 280)}…` : errText;
       return {
         ok: false,
         error:
-          short ||
+          errText ||
           `Trendyol gönderimi başarısız (HTTP ${res.status}). Ayarlar > Trendyol API bilgilerini kontrol edin.`,
       };
     }
@@ -913,9 +911,11 @@ export default function ProductsPage() {
       kind: errs.length === 0 ? "success" : ok > 0 ? "partial" : "error",
       title,
       message:
-        ok > 0
+        errs.length === 0 && ok > 0
           ? `${ok}/${total} ürün Trendyol'a gönderildi. Onay bekleyenlerde birkaç dakika içinde görünür.`
-          : "Hiçbir ürün Trendyol'a gönderilemedi.",
+          : ok > 0
+            ? `${ok}/${total} ürün gönderildi; ${errs.length} üründe hata var.`
+            : "Trendyol yayımlama başarısız — ürün mağazaya gitmedi.",
       errors: errs.length ? errs.slice(0, 8) : undefined,
     });
 
@@ -925,7 +925,7 @@ export default function ProductsPage() {
       );
     } else if (errs.length > 0) {
       alert(
-        `${title}\n\n${ok}/${total} başarılı.\n\nHatalar:\n${errs.slice(0, 5).join("\n")}`
+        `${ok > 0 ? `${ok}/${total} başarılı.\n\n` : "Yayımlama başarısız.\n\n"}Hatalar:\n${errs.slice(0, 3).join("\n\n")}`
       );
     } else {
       alert(`${title}\n\nGönderim yapılamadı. Ürün seçimi ve zorunlu alanları kontrol edin.`);
@@ -1009,7 +1009,7 @@ export default function ProductsPage() {
       if (!published.ok) {
         setModalActionMsg({
           kind: "error",
-          text: `Kayıt tamam, Trendyol gönderimi başarısız: ${published.error}`,
+          text: `Trendyol'a gönderilemedi: ${published.error}`,
         });
         showTrendyolPublishFeedback("Trendyol'a Yayımla", 0, 1, [published.error]);
         await refreshProductsQuiet();
