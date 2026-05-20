@@ -9,6 +9,7 @@ import {
   probeTrendyolProductListEndpoints,
 } from '@/lib/trendyol';
 import { generateEan13 } from '@/lib/codes';
+import { isProductExcluded } from '@/lib/product-exclusion';
 
 /** .env: 1, true, yes, on (büyük/küçük harf) */
 function parseEnvBool(v: string | undefined): boolean {
@@ -297,6 +298,7 @@ export async function GET() {
     let variantProductCount = 0;
     let singleProductCount = 0;
     let totalVariantLines = 0;
+    let skippedExcluded = 0;
     const syncErrors: string[] = [];
     const groups = groupCoercedRows(rows);
     for (const group of groups) {
@@ -305,6 +307,25 @@ export async function GET() {
       );
       const first = sorted[0]!;
       const hasVariants = sorted.length > 1;
+
+      const parentSku = hasVariants
+        ? first.productMainId
+          ? `TY-M-${first.productMainId}`
+          : `TY-C-${first.contentId}`
+        : first.stockCode;
+
+      if (
+        await isProductExcluded({
+          sku: parentSku,
+          barcode: first.barcode,
+          trendyolProductId: first.contentId || first.id,
+          trendyolProductMainId: first.productMainId,
+          stockCode: first.stockCode,
+        })
+      ) {
+        skippedExcluded++;
+        continue;
+      }
 
       const stockTotal = sorted.reduce(
         (acc, r) => acc + Math.max(0, Math.floor(r.quantity)),
@@ -319,12 +340,6 @@ export async function GET() {
             : 0
         )
       );
-
-      const parentSku = hasVariants
-        ? first.productMainId
-          ? `TY-M-${first.productMainId}`
-          : `TY-C-${first.contentId}`
-        : first.stockCode;
 
       const variantsPayload = hasVariants
         ? sorted.map((r) => ({
@@ -430,6 +445,7 @@ export async function GET() {
       variantProducts: variantProductCount,
       singleProducts: singleProductCount,
       totalVariantLines,
+      skippedExcluded,
       failedGroups: syncErrors.length,
     };
 
@@ -449,7 +465,10 @@ export async function GET() {
       message =
         `Trendyol'dan ${rows.length} satır alındı → ${syncedCount} ürün modeli kaydedildi ` +
         `(${createdCount} yeni, ${updatedCount} güncellendi). ` +
-        `${variantProductCount} varyantlı, ${singleProductCount} tekil ürün; toplam ${totalVariantLines} varyant satırı.`;
+        `${variantProductCount} varyantlı, ${singleProductCount} tekil ürün; toplam ${totalVariantLines} varyant satırı.` +
+        (skippedExcluded > 0
+          ? ` ${skippedExcluded} silinmiş ürün atlandı (ERP'den kaldırıldığı için tekrar içe aktarılmaz).`
+          : '');
     } else if (syncErrors.length > 0) {
       message = `Hiçbir ürün yazılamadı (${syncErrors.length} hata). Trendyol'dan ${rows.length} satır geldi.`;
     } else {

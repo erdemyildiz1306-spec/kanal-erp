@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
-import Product from '@/models/Product';
 import mongoose from 'mongoose';
+import { deleteProductsWithCleanup } from '@/lib/product-delete';
 
 export async function POST(request: Request) {
   try {
@@ -27,14 +27,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await Product.deleteMany({
-      _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
-    });
+    const result = await deleteProductsWithCleanup(ids);
 
     return NextResponse.json({
       success: true,
-      deletedCount: result.deletedCount,
-      message: `${result.deletedCount} ürün silindi.`,
+      message:
+        `${result.deletedCount} ürün silindi. ` +
+        `Depo stok satırı: ${result.warehouseRowsRemoved}, link: ${result.linksRemoved}. ` +
+        `Trendyol/mağaza senkronunda tekrar gelmemesi için hariç listeye alındı.`,
+      ...result,
     });
   } catch (error: unknown) {
     console.error('POST bulk-delete Error:', error);

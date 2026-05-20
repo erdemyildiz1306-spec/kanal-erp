@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
+import { deleteProductsWithCleanup } from '@/lib/product-delete';
 
 function normalizeTyAttributesFromClient(data: unknown): Array<{
   attributeId: number;
@@ -508,12 +509,16 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Ürün ID belirtilmelidir.' }, { status: 400 });
     }
 
-    const deletedProduct = await Product.findByIdAndDelete(id);
-    if (!deletedProduct) {
+    const result = await deleteProductsWithCleanup([id]);
+    if (result.deletedCount === 0) {
       return NextResponse.json({ error: 'Ürün bulunamadı.' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, message: 'Ürün başarıyla silindi.' });
+    return NextResponse.json({
+      success: true,
+      message:
+        'Ürün silindi. Depo stokları temizlendi; Trendyol/mağaza çekiminde tekrar gelmeyecek.',
+    });
   } catch (error: unknown) {
     console.error('DELETE Product Error:', error);
     const message = error instanceof Error ? error.message : 'Sunucu hatası';

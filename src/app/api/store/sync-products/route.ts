@@ -3,6 +3,7 @@ import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
 import { generateEan13 } from '@/lib/codes';
+import { isProductExcluded } from '@/lib/product-exclusion';
 
 function joinUrl(base: string, path: string): string {
   const b = base.trim().replace(/\/?$/, '/');
@@ -80,10 +81,21 @@ export async function GET() {
     }
 
     let synced = 0;
+    let skippedExcluded = 0;
     for (const row of rows) {
       const sku = String(row.sku ?? row.merchantSku ?? '').trim();
       if (!sku) continue;
       const barcode = String(row.barcode ?? row.gtin ?? '').trim() || generateEan13();
+      if (
+        await isProductExcluded({
+          sku,
+          barcode,
+          stockCode: sku,
+        })
+      ) {
+        skippedExcluded++;
+        continue;
+      }
       const name = String(row.name ?? row.title ?? sku).trim();
       const price = Number(row.price ?? row.salePrice ?? row.listPrice ?? 0) || 0;
       const stock = Math.max(0, Math.floor(Number(row.stock ?? row.quantity ?? 0) || 0));
@@ -116,7 +128,12 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       count: synced,
-      message: `Mağazadan ${synced} ürün ERP'ye aktarıldı.`,
+      skippedExcluded,
+      message:
+        `Mağazadan ${synced} ürün ERP'ye aktarıldı.` +
+        (skippedExcluded > 0
+          ? ` ${skippedExcluded} silinmiş ürün atlandı.`
+          : ''),
       endpoint,
     });
   } catch (error: unknown) {
