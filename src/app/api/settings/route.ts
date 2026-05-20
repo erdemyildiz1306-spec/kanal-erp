@@ -99,6 +99,12 @@ export async function PUT(request: Request) {
     if (data.webApiUrl !== undefined) {
       doc.set('webApiUrl', String(data.webApiUrl ?? ''));
     }
+    if (data.webApiStockPath !== undefined) {
+      doc.set('webApiStockPath', String(data.webApiStockPath ?? 'stock-price').trim() || 'stock-price');
+    }
+    if (data.webApiPushUrl !== undefined) {
+      doc.set('webApiPushUrl', String(data.webApiPushUrl ?? '').trim());
+    }
     if (data.storeName !== undefined) {
       doc.set('storeName', String(data.storeName ?? ''));
     }

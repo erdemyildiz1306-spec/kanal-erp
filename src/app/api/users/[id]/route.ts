@@ -12,10 +12,20 @@ export async function PATCH(
 ) {
   try {
     await connectToDatabase();
-    const session = requireSession(request, ['admin']);
+    const session = requireSession(request);
     if (session instanceof Response) return session;
 
     const { id } = await ctx.params;
+    const isSelf = String(session.userId) === String(id);
+    const isAdmin = session.role === 'admin';
+
+    if (!isAdmin && !isSelf) {
+      return NextResponse.json(
+        { success: false, error: 'Bu kullanıcıyı düzenleme yetkiniz yok.' },
+        { status: 403 }
+      );
+    }
+
     const data = (await request.json()) as Record<string, unknown>;
 
     const user = await User.findById(id);
@@ -35,26 +45,39 @@ export async function PATCH(
       }
       user.email = email;
     }
-    if (data.role !== undefined) {
-      const role = String(data.role ?? '').trim();
-      if (!ALLOWED_ROLES.includes(role as (typeof ALLOWED_ROLES)[number])) {
-        return NextResponse.json(
-          { success: false, error: 'Geçersiz rol. admin, operator veya accountant seçin.' },
-          { status: 400 }
-        );
+
+    if (isAdmin) {
+      if (data.role !== undefined) {
+        const role = String(data.role ?? '').trim();
+        if (!ALLOWED_ROLES.includes(role as (typeof ALLOWED_ROLES)[number])) {
+          return NextResponse.json(
+            { success: false, error: 'Geçersiz rol. admin, operator veya accountant seçin.' },
+            { status: 400 }
+          );
+        }
+        if (isSelf && role !== 'admin') {
+          return NextResponse.json(
+            { success: false, error: 'Kendi yönetici rolünüzü düşüremezsiniz.' },
+            { status: 400 }
+          );
+        }
+        user.role = role as typeof user.role;
       }
-      if (String(session.userId) === String(user._id) && role !== 'admin') {
-        return NextResponse.json(
-          { success: false, error: 'Kendi yönetici rolünüzü düşüremezsiniz.' },
-          { status: 400 }
-        );
-      }
-      user.role = role as typeof user.role;
+      if (data.active !== undefined) user.active = Boolean(data.active);
     }
-    if (data.active !== undefined) user.active = Boolean(data.active);
 
     const password = String(data.password ?? '').trim();
     if (password) {
+      if (!isAdmin && isSelf) {
+        const current = String(data.currentPassword ?? '');
+        const ok = await bcrypt.compare(current, user.passwordHash);
+        if (!ok) {
+          return NextResponse.json(
+            { success: false, error: 'Mevcut şifre hatalı.' },
+            { status: 400 }
+          );
+        }
+      }
       user.passwordHash = await bcrypt.hash(password, 10);
     }
 

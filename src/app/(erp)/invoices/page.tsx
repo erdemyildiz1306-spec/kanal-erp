@@ -311,7 +311,49 @@ export default function InvoicesPage() {
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-slate-500">Yükleniyor…</div>
+        ) : list.length === 0 ? (
+          <p className="p-10 text-center erp-muted">Kayıtlı fatura yok.</p>
         ) : (
+          <>
+          <div className="md:hidden space-y-2 p-3">
+            {list.map((inv) => (
+              <article key={inv._id} className="erp-card p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-mono text-sm font-bold text-[var(--erp-text)]">{inv.invoiceNumber}</p>
+                    <p className="text-sm erp-muted mt-0.5">{inv.customerName || "—"}</p>
+                  </div>
+                  <span className="text-base font-bold">₺{inv.grandTotal?.toFixed(2)}</span>
+                </div>
+                <span
+                  className={`inline-block text-xs px-2 py-0.5 rounded-md font-medium ${
+                    inv.status === "Kesildi"
+                      ? "bg-green-100 text-green-800"
+                      : inv.status === "İptal"
+                        ? "bg-red-100 text-red-800"
+                        : "bg-amber-100 text-amber-900"
+                  }`}
+                >
+                  {inv.status}
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setViewInv(inv)} className="erp-btn erp-btn-secondary text-sm py-3">
+                    Görüntüle
+                  </button>
+                  {inv.status === "Taslak" ? (
+                    <button type="button" onClick={() => openEdit(inv)} className="erp-btn erp-btn-primary text-sm py-3">
+                      Düzenle
+                    </button>
+                  ) : inv.status === "Kesildi" ? (
+                    <button type="button" onClick={() => setCancelInv(inv)} className="erp-btn erp-btn-ghost text-sm py-3 text-orange-600">
+                      İptal
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/80 text-slate-600">
@@ -396,6 +438,8 @@ export default function InvoicesPage() {
               )}
             </tbody>
           </table>
+          </div>
+          </>
         )}
       </div>
 

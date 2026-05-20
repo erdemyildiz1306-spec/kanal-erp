@@ -257,7 +257,43 @@ export default function CariPage() {
           ) : entries.length === 0 ? (
             <p className="p-6 text-slate-500">Henüz hareket yok.</p>
           ) : (
-            <div className="overflow-x-auto max-h-96">
+            <>
+            <div className="md:hidden divide-y divide-[var(--erp-border)]">
+              {entries.map((row) => (
+                <div key={row._id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold capitalize text-[var(--erp-text)]">{row.type}</p>
+                      <p className="text-sm erp-muted mt-0.5">{row.description || "—"}</p>
+                    </div>
+                    <span className="font-bold text-[var(--erp-text)]">{fmt(Number(row.amount) || 0)}</span>
+                  </div>
+                  <p className="text-xs erp-muted">
+                    {row.createdAt ? new Date(row.createdAt).toLocaleString("tr-TR") : "—"}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditEntry(row);
+                        setEditEntryDesc(row.description ?? "");
+                      }}
+                      className="erp-btn erp-btn-secondary text-sm py-2.5"
+                    >
+                      Düzenle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteEntry(row)}
+                      className="erp-btn erp-btn-ghost text-sm py-2.5 text-red-600"
+                    >
+                      Sil
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto max-h-96">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-xs text-slate-500 uppercase sticky top-0">
                   <tr>
@@ -301,6 +337,7 @@ export default function CariPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       </div>

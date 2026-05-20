@@ -1,19 +1,10 @@
 import Product from '@/models/Product';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { readStorePushSettings, resolveStorePushEndpoint } from '@/lib/store-endpoint';
 import {
   getTrendyolSettings,
   updateTrendyolStockAndPrice,
 } from '@/lib/trendyol';
-
-function joinUrl(base: string, path: string): string {
-  const b = base.trim().replace(/\/?$/, '/');
-  const p = path.replace(/^\//, '');
-  try {
-    return new URL(p, b).href;
-  } catch {
-    return `${b}${p}`;
-  }
-}
 
 type ProductDoc = {
   _id: unknown;
@@ -100,9 +91,10 @@ export async function pushProductStockToChannels(
   ) {
     try {
       const doc = await resolveSingletonSettingDocument();
-      const baseUrl = String(doc.get('webApiUrl') ?? '').trim();
+      const storeSettings = readStorePushSettings(doc);
       const token = String(doc.get('webApiToken') ?? '').trim();
-      if (!baseUrl) {
+      const endpoint = resolveStorePushEndpoint(storeSettings);
+      if (!storeSettings.webApiUrl && !storeSettings.webApiPushUrl) {
         result.web = 'Mağaza URL tanımlı değil';
       } else {
         const listPrice = Math.max(0, Number(product.price) || 0);
@@ -138,7 +130,6 @@ export async function pushProductStockToChannels(
         }
 
         if (items.length) {
-          const endpoint = joinUrl(baseUrl, 'stock-price');
           const res = await fetch(endpoint, {
             method: 'POST',
             headers: {

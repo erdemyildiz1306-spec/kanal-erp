@@ -55,10 +55,23 @@ export async function POST(request: Request) {
     }
 
     const user = await User.findOne({ email });
-    if (!user || !user.active) {
+    if (!user) {
       return NextResponse.json(
         { success: false, error: 'Geçersiz e-posta veya şifre.' },
         { status: 401 }
+      );
+    }
+
+    if (!user.active) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            user.signupSource === 'signup'
+              ? 'Hesabınız henüz yönetici tarafından onaylanmadı. Onay sonrası giriş yapabilirsiniz.'
+              : 'Hesabınız pasif. Yöneticinizle iletişime geçin.',
+        },
+        { status: 403 }
       );
     }
 

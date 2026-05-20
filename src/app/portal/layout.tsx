@@ -36,7 +36,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-950 via-violet-900 to-slate-950 text-white pb-20 sm:pb-6">
+    <div className="min-h-screen bg-gradient-to-br from-violet-950 via-violet-900 to-slate-950 text-white pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-6">
       <header className="border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
@@ -76,7 +76,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
       <main className="max-w-5xl mx-auto px-4 py-6">{children}</main>
 
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-50 border-t border-white/10 bg-slate-950/95 backdrop-blur-md">
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-50 border-t border-white/10 bg-slate-950/95 backdrop-blur-md" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <div className="flex justify-around py-2">
           {bottomNav.map((item) => {
             const active = pathname === item.href;

@@ -60,10 +60,16 @@ export async function middleware(request: NextRequest) {
 
   if (pathname.startsWith('/api/users') && session.role !== 'admin') {
     if (request.method !== 'GET') {
-      return NextResponse.json(
-        { success: false, error: 'Kullanıcı yönetimi yalnızca yöneticiye açıktır.' },
-        { status: 403 }
-      );
+      const ownProfilePatch =
+        request.method === 'PATCH' &&
+        pathname.match(/^\/api\/users\/[^/]+$/) &&
+        pathname.endsWith(`/${session.userId}`);
+      if (!ownProfilePatch) {
+        return NextResponse.json(
+          { success: false, error: 'Kullanıcı yönetimi yalnızca yöneticiye açıktır.' },
+          { status: 403 }
+        );
+      }
     }
   }
 

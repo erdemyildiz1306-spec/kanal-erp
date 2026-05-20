@@ -1,0 +1,19 @@
+{
+  "name": "Kanal ERP",
+  "short_name": "KanalERP",
+  "description": "Stok, sipariş ve Trendyol yönetimi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f2ee",
+  "theme_color": "#4a5d45",
+  "orientation": "portrait-primary",
+  "lang": "tr",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
+import { verifyStoreApiBearer } from '@/lib/store-api-auth';
 
 /** Mağaza sözleşmesi: POST { source, items[] } — yerel ürün stok/fiyat günceller */
 export async function POST(request: Request) {
   try {
+    if (!(await verifyStoreApiBearer(request))) {
+      return NextResponse.json(
+        { success: false, error: 'Geçersiz veya eksik API token (Authorization: Bearer …).' },
+        { status: 401 }
+      );
+    }
+
     await connectToDatabase();
     const data = await request.json();
     const items = Array.isArray(data.items) ? data.items : [];

@@ -12,6 +12,10 @@ import {
   Mail,
   Download,
 } from "lucide-react";
+import PageHeader from "@/components/ui/PageHeader";
+import Spinner from "@/components/ui/Spinner";
+import MobileAccordion from "@/components/ui/MobileAccordion";
+import { useToast } from "@/components/providers/ToastProvider";
 
 type SettingsPayload = {
   trendyolSellerId?: string;
@@ -159,7 +163,9 @@ function friendlyDatabaseError(raw: unknown): string {
 }
 
 export default function SettingsPage() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState("general");
+  const [mobileOpenTab, setMobileOpenTab] = useState<string | null>("general");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -175,6 +181,7 @@ export default function SettingsPage() {
     surname: "",
     email: "",
     password: "",
+    currentPassword: "",
   });
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
@@ -209,6 +216,7 @@ export default function SettingsPage() {
           surname: nameParts.slice(1).join(" "),
           email: String(meData.user.email ?? "").trim(),
           password: "",
+          currentPassword: "",
         });
       }
       if (!res.ok || !data.success || !data.settings) {
@@ -442,10 +450,10 @@ export default function SettingsPage() {
           `Ayarlar kaydedildi, ancak marka ID otomatik bulunamadı:\n${data.brandResolveWarning}`
         );
       } else {
-        alert(
+        toast.success(
           activeTab === "general"
-            ? "Ayarlar ve giriş bilgileri kaydedildi."
-            : "Ayarlar kaydedildi. Satıcı ID ve marka bilgileri sunucuda saklandı."
+            ? "Ayarlar ve giriş bilgileri kaydedildi"
+            : "Ayarlar kaydedildi"
         );
       }
     } catch {
@@ -456,68 +464,44 @@ export default function SettingsPage() {
   };
 
   const tabs = [
-    { id: "general", name: "Genel & Firma Ayarları", icon: User, color: "text-blue-600 bg-blue-50" },
-    { id: "trendyol", name: "Trendyol Entegrasyonu", icon: Store, color: "text-orange-600 bg-orange-50" },
-    { id: "web", name: "Next.js Mağaza API", icon: LinkIcon, color: "text-indigo-600 bg-indigo-50" },
-    { id: "print", name: "Etiket & Çıktı", icon: Printer, color: "text-purple-600 bg-purple-50" },
+    { id: "general", name: "Genel & Firma Ayarları", shortName: "Genel & Firma", subtitle: "Firma ve profil", icon: User, color: "text-blue-600 bg-blue-50" },
+    { id: "trendyol", name: "Trendyol Entegrasyonu", shortName: "Trendyol", subtitle: "API anahtarları", icon: Store, color: "text-orange-600 bg-orange-50" },
+    { id: "web", name: "Next.js Mağaza API", shortName: "Mağaza API", subtitle: "Web entegrasyonu", icon: LinkIcon, color: "text-indigo-600 bg-indigo-50" },
+    { id: "print", name: "Etiket & Çıktı", shortName: "Etiket", subtitle: "Yazdırma", icon: Printer, color: "text-purple-600 bg-purple-50" },
   ];
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-800">Sistem Ayarları</h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Stok ERP (MongoDB); fatura başlığı ve Trendyol / mağaza API bilgileri burada saklanır.
-          {loading && " Veriler yükleniyor…"}
-        </p>
-        {loadError ? (
-          <div
-            className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-            role="alert"
-          >
-            <p className="font-semibold">Veritabanı bağlantısı yok</p>
-            <p className="mt-1 text-amber-900/90">{loadError}</p>
-            <p className="mt-2 text-xs text-amber-800/80">
-              Örnek yerel adres: <code className="rounded bg-amber-100/80 px-1">mongodb://127.0.0.1:27017/kanal-erp</code> — MongoDB
-              servisinin çalıştığından emin olun. Değişiklikten sonra{" "}
-              <code className="rounded bg-amber-100/80 px-1">npm run dev</code> sürecini yeniden başlatın.
-            </p>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="mt-3 rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800"
-            >
-              Yeniden dene
-            </button>
-          </div>
-        ) : null}
-      </div>
+  const toggleMobileTab = (id: string) => {
+    setActiveTab(id);
+    setMobileOpenTab((prev) => (prev === id ? null : id));
+  };
 
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
-        <div className="w-full lg:w-80 bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-1 shrink-0">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center space-x-3 p-3.5 rounded-xl transition-all text-left ${
-                  isActive
-                    ? "bg-slate-900 text-white font-semibold shadow-md shadow-slate-900/10"
-                    : "text-slate-650 hover:bg-slate-50 hover:text-slate-900 font-medium"
-                }`}
-              >
-                <div className={`p-1.5 rounded-lg ${isActive ? "bg-white/10 text-white" : tab.color}`}>
-                  <Icon size={18} />
-                </div>
-                <span className="text-sm">{tab.name}</span>
-              </button>
-            );
-          })}
-        </div>
+  const saveBar = (tabId?: string) => (
+    <div className="pt-6 mt-4 border-t border-[var(--erp-border)] flex flex-col sm:flex-row gap-3 justify-between">
+      <button
+        type="button"
+        onClick={() => window.open("/api/backup", "_blank")}
+        className="erp-btn erp-btn-secondary text-sm"
+      >
+        <Download size={18} />
+        JSON Yedek İndir
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (tabId) setActiveTab(tabId);
+          void handleSave();
+        }}
+        disabled={saving || loading}
+        className="erp-btn erp-btn-primary flex-1 sm:flex-none disabled:opacity-50"
+      >
+        <Save size={18} />
+        {saving ? "Kaydediliyor…" : "Kaydet"}
+      </button>
+    </div>
+  );
 
-        <div className="flex-1 w-full bg-white rounded-2xl border border-slate-100 shadow-sm p-6 min-h-[420px] flex flex-col justify-between">
+  const settingsPanels = (
+    <>
           {activeTab === "general" && (
             <div className="space-y-6">
               <div className="border-b border-slate-100 pb-4">
@@ -1000,26 +984,73 @@ export default function SettingsPage() {
             </div>
           )}
 
-          <div className="pt-8 mt-6 border-t border-slate-100 flex flex-wrap justify-between items-center gap-4">
-            <button
-              type="button"
-              onClick={() => {
-                window.open("/api/backup", "_blank");
-              }}
-              className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-200 px-4 py-2.5 rounded-xl hover:bg-emerald-100 font-medium"
-            >
-              <Download size={18} />
-              JSON Yedek İndir
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving || loading}
-              className="flex items-center space-x-2 bg-slate-900 text-white px-6 py-2.5 rounded-xl hover:bg-slate-800 transition-colors shadow-md shadow-slate-900/10 font-semibold disabled:opacity-50"
-            >
-              <Save size={18} />
-              <span>{saving ? "Kaydediliyor…" : "Ayarları Kaydet"}</span>
-            </button>
-          </div>
+    </>
+  );
+
+  if (loading) return <Spinner label="Ayarlar yükleniyor…" />;
+
+  return (
+    <div className="erp-page max-w-6xl mx-auto">
+      <PageHeader
+        title="Ayarlar"
+        subtitle="Trendyol, mağaza API ve firma bilgileri"
+      />
+
+      {loadError ? (
+        <div className="erp-card border-amber-300 bg-amber-500/10 px-4 py-3 text-sm" role="alert">
+          <p className="font-semibold text-[var(--erp-text)]">Veritabanı bağlantısı yok</p>
+          <p className="mt-1 erp-muted">{loadError}</p>
+          <button type="button" onClick={() => void load()} className="erp-btn erp-btn-secondary text-sm mt-3">
+            Yeniden dene
+          </button>
+        </div>
+      ) : null}
+
+      <MobileAccordion
+        items={tabs.map((tab) => ({
+          id: tab.id,
+          title: tab.shortName,
+          subtitle: tab.subtitle,
+          icon: <tab.icon size={20} />,
+        }))}
+        openId={mobileOpenTab}
+        onToggle={toggleMobileTab}
+        renderPanel={() => (
+          <>
+            {settingsPanels}
+            {saveBar(activeTab)}
+          </>
+        )}
+      />
+
+      <div className="hidden lg:flex flex-col lg:flex-row gap-6 items-start">
+        <div className="w-full lg:w-72 erp-card p-3 space-y-1 shrink-0">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full flex items-center gap-3 p-3.5 rounded-xl transition-all text-left ${
+                  isActive
+                    ? "bg-[var(--erp-accent)] text-white font-semibold"
+                    : "text-[var(--erp-text-muted)] hover:bg-[var(--erp-surface-2)]"
+                }`}
+              >
+                <div className={`p-1.5 rounded-lg ${isActive ? "bg-white/15" : tab.color}`}>
+                  <Icon size={18} />
+                </div>
+                <span className="text-sm">{tab.name}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex-1 w-full erp-card p-6 min-h-[420px] flex flex-col justify-between">
+          {settingsPanels}
+          {saveBar()}
         </div>
       </div>
     </div>

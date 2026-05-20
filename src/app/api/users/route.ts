@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import connectToDatabase from '@/lib/mongodb';
 import User from '@/models/User';
+import { requireSession } from '@/lib/auth';
 
 export async function GET() {
   try {
@@ -16,6 +17,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin']);
+    if (session instanceof Response) return session;
+
     await connectToDatabase();
     const data = await request.json();
     const email = String(data.email || '').toLowerCase().trim();

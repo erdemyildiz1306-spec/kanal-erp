@@ -41,16 +41,16 @@ export default function ReportsPage() {
   }, [timeRange]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="erp-page max-w-6xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Raporlar & Analiz</h2>
-          <p className="text-sm text-slate-500 mt-1">Canlı sipariş ve stok verileri.</p>
+          <h2 className="erp-page-title">Raporlar</h2>
+          <p className="text-sm erp-muted mt-1">Canlı sipariş ve stok verileri.</p>
         </div>
         <select
           value={timeRange}
           onChange={(e) => setTimeRange(e.target.value)}
-          className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium outline-none"
+          className="erp-input sm:max-w-[12rem] text-sm py-2.5"
         >
           <option>Bugün</option>
           <option>Bu Hafta</option>
@@ -61,11 +61,11 @@ export default function ReportsPage() {
       </div>
 
       {loading ? (
-        <p className="text-slate-500">Yükleniyor…</p>
+        <p className="erp-muted py-8 text-center">Yükleniyor…</p>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
+            <div className="erp-card p-4 md:p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500">Toplam Ciro</p>
                 <p className="text-2xl font-bold text-slate-800">{fmt(kpis.totalRevenue)}</p>

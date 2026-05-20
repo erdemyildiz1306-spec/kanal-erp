@@ -3,10 +3,24 @@
   "appName": "KanalERP",
   "webDir": "out",
   "server": {
-    "url": "http://10.0.2.2:3005",
-    "cleartext": true
+    "url": "https://erp-stok.vercel.app",
+    "cleartext": false,
+    "androidScheme": "https",
+    "allowNavigation": ["erp-stok.vercel.app", "*.vercel.app"]
   },
   "android": {
-    "allowMixedContent": true
+    "allowMixedContent": false,
+    "backgroundColor": "#f4f2ee",
+    "webContentsDebuggingEnabled": false,
+    "captureInput": true,
+    "useLegacyBridge": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "androidSplashResourceName": "splash",
+      "backgroundColor": "#f4f2ee",
+      "showSpinner": false
+    }
   }
 }

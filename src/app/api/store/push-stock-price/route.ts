@@ -3,16 +3,8 @@ import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
-
-function joinUrl(base: string, path: string): string {
-  const b = base.trim().replace(/\/?$/, '/');
-  const p = path.replace(/^\//, '');
-  try {
-    return new URL(p, b).href;
-  } catch {
-    return `${b}${p}`;
-  }
-}
+import { formatStorePushError } from '@/lib/store-push-error';
+import { readStorePushSettings, resolveStorePushEndpoint } from '@/lib/store-endpoint';
 
 /**
  * Mağaza web API’sine seçili ürünlerin site fiyatı + stok.
@@ -25,13 +17,10 @@ export async function POST(request: Request) {
     await connectToDatabase();
 
     const doc = await resolveSingletonSettingDocument();
-    let baseUrl = String(doc.get('webApiUrl') ?? '').trim();
+    const storeSettings = readStorePushSettings(doc);
     const token = String(doc.get('webApiToken') ?? '').trim();
 
-    /** Harici mağaza URL yoksa yerel alıcı uç noktasına düş */
-    if (!baseUrl) {
-      baseUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://127.0.0.1:3005'}/api/store`;
-    }
+    const endpoint = resolveStorePushEndpoint(storeSettings);
 
     let body: { productIds?: string[] };
     try {
@@ -123,8 +112,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const endpoint = joinUrl(baseUrl, 'stock-price');
-
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -143,7 +130,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: `Mağaza yanıtı HTTP ${res.status}. ${text.slice(0, 500)}`,
+          error: formatStorePushError(res.status, text, endpoint),
           endpoint,
           skipped: skipped.length ? skipped : undefined,
         },

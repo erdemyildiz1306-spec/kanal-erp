@@ -1,35 +1,37 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Package, ShoppingCart, TrendingUp, AlertTriangle } from "lucide-react";
-import { Bar, Doughnut } from "react-chartjs-2";
-import type { ChartOptions } from "chart.js";
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement,
-} from "chart.js";
+  Package,
+  ShoppingCart,
+  TrendingUp,
+  AlertTriangle,
+  ScanBarcode,
+  Search,
+  Warehouse,
+  Plus,
+  ChevronRight,
+  Bell,
+} from "lucide-react";
+import PageHeader from "@/components/ui/PageHeader";
+import Spinner from "@/components/ui/Spinner";
+import MobileListCard from "@/components/ui/MobileListCard";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement
-);
+const DashboardCharts = dynamic(() => import("@/components/dashboard/DashboardCharts"), {
+  ssr: false,
+  loading: () => (
+    <div className="erp-card p-8 text-center erp-muted text-sm">Grafikler yükleniyor…</div>
+  ),
+});
 
-const C = {
-  sageDeep: "rgba(90, 115, 95, 0.75)",
-  stoneDeep: "rgba(100, 98, 90, 0.65)",
-  mist: "#fbfaf7",
-};
+const quickActions = [
+  { href: "/scanner", label: "Barkod", desc: "Tara & stok", icon: ScanBarcode, tone: "bg-emerald-600 text-white" },
+  { href: "/products", label: "Ürün", desc: "Ara & düzenle", icon: Search, tone: "bg-blue-600 text-white" },
+  { href: "/warehouse", label: "Depo", desc: "Stok düzelt", icon: Warehouse, tone: "bg-violet-600 text-white" },
+  { href: "/products?new=1", label: "Ekle", desc: "Yeni ürün", icon: Plus, tone: "bg-[var(--erp-accent)] text-white dark:text-[#0f1210]" },
+];
 
 function fmtMoney(n: number) {
   return `₺${n.toLocaleString("tr-TR", { maximumFractionDigits: 0 })}`;
@@ -40,7 +42,6 @@ export default function Home() {
   const [stats, setStats] = useState({
     totalSales: 0,
     totalProfit: 0,
-    totalCost: 0,
     pendingOrders: 0,
     productCount: 0,
     criticalStock: 0,
@@ -54,10 +55,7 @@ export default function Home() {
   useEffect(() => {
     const refresh = async () => {
       try {
-        const [dashRes, ordRes] = await Promise.all([
-          fetch("/api/dashboard"),
-          fetch("/api/orders"),
-        ]);
+        const [dashRes, ordRes] = await Promise.all([fetch("/api/dashboard"), fetch("/api/orders")]);
         const dash = await dashRes.json();
         const ord = await ordRes.json();
         if (dash.success) {
@@ -67,7 +65,7 @@ export default function Home() {
         }
         if (ord.success && Array.isArray(ord.orders)) {
           setRecentOrders(
-            ord.orders.slice(0, 5).map((o: Record<string, unknown>) => ({
+            ord.orders.slice(0, 6).map((o: Record<string, unknown>) => ({
               orderNumber: String(o.orderNumber ?? ""),
               platform: String(o.platform ?? ""),
               customerName: String(o.customerName ?? ""),
@@ -80,121 +78,169 @@ export default function Home() {
         setLoading(false);
       }
     };
-
     void refresh();
     const onSync = () => void refresh();
     window.addEventListener("erp-orders-synced", onSync);
     return () => window.removeEventListener("erp-orders-synced", onSync);
   }, []);
 
-  const statCards = [
-    { title: "Toplam Satış (7 gün)", value: fmtMoney(stats.totalSales), icon: TrendingUp, color: "text-[#5a6f55]", bg: "bg-[#e8ede4]" },
-    { title: "Net Kâr (7 gün)", value: fmtMoney(stats.totalProfit), icon: TrendingUp, color: "text-[#3d6b4f]", bg: "bg-[#dceee3]" },
-    { title: "Bekleyen Sipariş", value: String(stats.pendingOrders), icon: ShoppingCart, color: "text-[#5c6470]", bg: "bg-[#e4e8ec]" },
-    { title: "Toplam Ürün", value: stats.productCount.toLocaleString("tr-TR"), icon: Package, color: "text-[#6a5f72]", bg: "bg-[#eae6ee]" },
-    { title: "Kritik Stok", value: String(stats.criticalStock), icon: AlertTriangle, color: "text-[#8b5348]", bg: "bg-[#f0e4e2]" },
+  if (loading) return <Spinner label="Özet yükleniyor…" />;
+
+  const kpis = [
+    { label: "Satış (7g)", value: fmtMoney(stats.totalSales), icon: TrendingUp, href: "/reports" },
+    { label: "Net Kâr", value: fmtMoney(stats.totalProfit), icon: TrendingUp, href: "/reports" },
+    { label: "Bekleyen", value: String(stats.pendingOrders), icon: ShoppingCart, href: "/orders", alert: stats.pendingOrders > 0 },
+    { label: "Kritik Stok", value: String(stats.criticalStock), icon: AlertTriangle, href: "/products", alert: stats.criticalStock > 0 },
   ];
 
-  const barData = {
-    labels: bar.labels,
-    datasets: [
-      { label: "Trendyol Satışları (₺)", data: bar.trendyol, backgroundColor: C.sageDeep, borderRadius: 6 },
-      { label: "Web Satışları (₺)", data: bar.web, backgroundColor: C.stoneDeep, borderRadius: 6 },
-    ],
-  };
-
-  const doughnutData = {
-    labels: ["Trendyol", "Web Sitesi"],
-    datasets: [{ data: doughnut.values, backgroundColor: [C.sageDeep, C.stoneDeep], borderWidth: 0 }],
-  };
-
-  const chartOpts: ChartOptions<"bar"> = {
-    maintainAspectRatio: false,
-    responsive: true,
-    plugins: { legend: { labels: { color: "#5c584f", font: { size: 12 } } } },
-    scales: {
-      x: { ticks: { color: "#7a766c" }, grid: { color: "rgba(0,0,0,0.04)" } },
-      y: { ticks: { color: "#7a766c" }, grid: { color: "rgba(0,0,0,0.05)" } },
-    },
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-stone-800">Dashboard</h2>
-        <div className="text-sm text-stone-500 text-right">
-          <div>{loading ? "Yükleniyor…" : "Canlı veri"}</div>
-          <div className="text-xs text-stone-400 mt-0.5">
-            Trendyol siparişleri ~90 sn&apos;de bir otomatik çekilir
+    <div className="erp-page max-w-7xl mx-auto pb-2">
+      {/* Mobil hero */}
+      <section className="erp-card p-4 md:p-5 bg-gradient-to-br from-[var(--erp-accent-soft)] to-[var(--erp-surface)] lg:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-[var(--erp-accent)]">KanalERP</p>
+            <h2 className="text-xl font-bold text-[var(--erp-text)] mt-1">Günaydın 👋</h2>
+            <p className="text-sm erp-muted mt-1">
+              {stats.pendingOrders > 0
+                ? `${stats.pendingOrders} bekleyen sipariş var`
+                : `${stats.productCount} ürün · canlı veri`}
+            </p>
           </div>
+          <Link
+            href="/orders"
+            className="touch-target-sm rounded-xl bg-[var(--erp-accent)] text-white dark:text-[#0f1210] flex items-center justify-center relative"
+          >
+            <Bell size={22} />
+            {stats.pendingOrders > 0 ? (
+              <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] px-0.5 flex items-center justify-center text-[10px] font-bold bg-red-600 text-white rounded-full">
+                {stats.pendingOrders > 9 ? "9+" : stats.pendingOrders}
+              </span>
+            ) : null}
+          </Link>
         </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        {statCards.map((stat, i) => (
-          <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-[#eae6e0]/90 flex items-center space-x-4">
-            <div className={`p-4 rounded-xl ${stat.bg} ${stat.color}`}>
-              <stat.icon size={24} />
+      <PageHeader
+        title="Özet"
+        subtitle="Trendyol siparişleri ~90 sn'de bir otomatik çekilir"
+        className="hidden lg:flex"
+      />
+
+      {/* Hızlı işlemler */}
+      <section>
+        <h3 className="text-sm font-bold erp-muted uppercase tracking-wide mb-2 px-0.5 lg:hidden">
+          Hızlı işlem
+        </h3>
+        <div className="grid grid-cols-4 gap-2 lg:grid-cols-4 lg:gap-3">
+          {quickActions.map((action) => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className={`erp-card flex flex-col items-center justify-center gap-1.5 p-3 min-h-[5.5rem] active:scale-[0.97] transition-transform ${action.tone}`}
+            >
+              <action.icon size={24} />
+              <span className="font-bold text-sm leading-none">{action.label}</span>
+              <span className="text-[10px] opacity-80 hidden sm:block">{action.desc}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* KPI */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {kpis.map((kpi) => (
+          <Link
+            key={kpi.label}
+            href={kpi.href}
+            className={`erp-card p-4 flex items-center gap-3 active:scale-[0.98] transition-transform ${
+              kpi.alert ? "ring-2 ring-amber-500/40" : ""
+            }`}
+          >
+            <div className={`p-2.5 rounded-xl bg-[var(--erp-accent-soft)] text-[var(--erp-accent)]`}>
+              <kpi.icon size={20} />
             </div>
-            <div>
-              <p className="text-sm font-medium text-stone-500">{stat.title}</p>
-              <h3 className="text-2xl font-bold text-stone-800">{stat.value}</h3>
+            <div className="min-w-0">
+              <p className="text-xs erp-muted font-medium truncate">{kpi.label}</p>
+              <p className="text-lg font-bold text-[var(--erp-text)]">{kpi.value}</p>
             </div>
-          </div>
+          </Link>
         ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="rounded-2xl border border-[#eae6e0]/90 lg:col-span-2 shadow-sm overflow-hidden" style={{ background: C.mist }}>
-          <div className="p-6">
-            <h3 className="text-lg font-bold text-stone-800 mb-4">Haftalık Satış Grafiği</h3>
-            <div className="h-72">
-              <Bar data={barData} options={chartOpts} />
-            </div>
+        <Link href="/products" className="erp-card p-4 flex items-center gap-3 col-span-2 lg:col-span-1 active:scale-[0.98] transition-transform">
+          <div className="p-2.5 rounded-xl bg-violet-500/10 text-violet-600">
+            <Package size={20} />
           </div>
-        </div>
-        <div className="rounded-2xl border border-[#eae6e0]/90 shadow-sm overflow-hidden" style={{ background: C.mist }}>
-          <div className="p-6">
-            <h3 className="text-lg font-bold text-stone-800 mb-4">Platform Dağılımı</h3>
-            <div className="h-64 flex flex-col items-center justify-center gap-2">
-              <Doughnut data={doughnutData} options={{ maintainAspectRatio: false }} />
-              <p className="text-xs text-stone-500">
-                TY {fmtMoney(doughnut.amounts[0] ?? 0)} · Web {fmtMoney(doughnut.amounts[1] ?? 0)}
-              </p>
-            </div>
+          <div>
+            <p className="text-xs erp-muted">Toplam Ürün</p>
+            <p className="text-lg font-bold">{stats.productCount.toLocaleString("tr-TR")}</p>
           </div>
-        </div>
-      </div>
+          <ChevronRight size={18} className="ml-auto erp-muted" />
+        </Link>
+      </section>
 
-      <div className="rounded-2xl border border-[#eae6e0]/90 shadow-sm bg-white p-6">
-        <h3 className="text-lg font-bold text-stone-800 mb-4">Son Siparişler</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-stone-100 text-sm text-stone-500">
-                <th className="py-3 font-medium">Sipariş No</th>
-                <th className="py-3 font-medium">Platform</th>
-                <th className="py-3 font-medium">Müşteri</th>
-                <th className="py-3 font-medium">Tutar</th>
-                <th className="py-3 font-medium">Durum</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentOrders.length === 0 ? (
-                <tr><td colSpan={5} className="py-6 text-center text-stone-500 text-sm">Henüz sipariş yok.</td></tr>
-              ) : recentOrders.map((o) => (
-                <tr key={o.orderNumber} className="border-b border-stone-50 last:border-0 text-sm">
-                  <td className="py-3 font-medium text-stone-800">{o.orderNumber}</td>
-                  <td className="py-3 capitalize">{o.platform}</td>
-                  <td className="py-3 text-stone-600">{o.customerName}</td>
-                  <td className="py-3 font-medium text-stone-800">{fmtMoney(o.totalAmount)}</td>
-                  <td className="py-3">{o.status}</td>
-                </tr>
+      <DashboardCharts bar={bar} doughnut={doughnut} />
+
+      {/* Son siparişler */}
+      <section className="erp-card p-4 md:p-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-[var(--erp-text)]">Son Siparişler</h3>
+          <Link href="/orders" className="text-sm font-semibold text-[var(--erp-accent)] flex items-center gap-1">
+            Tümü <ChevronRight size={16} />
+          </Link>
+        </div>
+        {recentOrders.length === 0 ? (
+          <p className="text-sm erp-muted py-6 text-center">Henüz sipariş yok.</p>
+        ) : (
+          <>
+            <div className="md:hidden space-y-2">
+              {recentOrders.map((o) => (
+                <MobileListCard
+                  key={o.orderNumber}
+                  title={o.orderNumber}
+                  subtitle={o.customerName}
+                  badge={
+                    <span className="text-sm font-bold text-[var(--erp-text)]">
+                      {fmtMoney(o.totalAmount)}
+                    </span>
+                  }
+                  meta={
+                    <>
+                      <span className="px-2 py-0.5 rounded-md bg-[var(--erp-accent-soft)] text-[var(--erp-accent)] capitalize">
+                        {o.platform}
+                      </span>
+                      <span className="erp-muted">{o.status}</span>
+                    </>
+                  }
+                />
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--erp-border)] erp-muted">
+                    <th className="py-3 font-medium">Sipariş</th>
+                    <th className="py-3 font-medium">Platform</th>
+                    <th className="py-3 font-medium">Müşteri</th>
+                    <th className="py-3 font-medium">Tutar</th>
+                    <th className="py-3 font-medium">Durum</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentOrders.map((o) => (
+                    <tr key={o.orderNumber} className="border-b border-[var(--erp-border)] last:border-0">
+                      <td className="py-3 font-medium">{o.orderNumber}</td>
+                      <td className="py-3 capitalize">{o.platform}</td>
+                      <td className="py-3">{o.customerName}</td>
+                      <td className="py-3 font-medium">{fmtMoney(o.totalAmount)}</td>
+                      <td className="py-3">{o.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 }

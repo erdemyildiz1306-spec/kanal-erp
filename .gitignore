@@ -82,3 +82,11 @@ public/uploads/
 # Yerel geliştirme MongoDB (mongodb-memory-server yedek)
 .data/
 
+# Capacitor — APK kaynak kodu repoda; derleme çıktıları hariç
+mobile-shell/node_modules/
+mobile-shell/android/
+mobile-shell/android/.gradle/
+
+
+.vercel
+.env*.local

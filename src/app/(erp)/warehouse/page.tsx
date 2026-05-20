@@ -242,26 +242,18 @@ export default function WarehousePage() {
   const totalUnits = warehouses.reduce((a, w) => a + (Number(w.totalUnits) || 0), 0);
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div className="flex items-start gap-4">
-          <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/20">
-            <WarehouseIcon size={28} />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800">Çoklu Depo Yönetimi</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Depolar arası stok transferi, depo bazlı düzeltme ve toplam stok senkronu.
-            </p>
-          </div>
+    <div className="erp-page max-w-6xl mx-auto">
+      <div className="flex flex-col gap-4">
+        <div>
+          <h2 className="erp-page-title">Depo</h2>
+          <p className="text-sm erp-muted mt-1">
+            Depolar arası transfer, stok düzeltme ve barkod ile hızlı işlem.
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/scanner"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium"
-          >
-            <ScanBarcode size={16} />
-            Barkod oku
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+          <Link href="/scanner" className="erp-btn erp-btn-secondary text-sm col-span-2 sm:col-span-1">
+            <ScanBarcode size={18} />
+            Barkod Tara
           </Link>
           <button
             type="button"
@@ -269,25 +261,18 @@ export default function WarehousePage() {
               setTransferForm({ fromId: selectedId, toId: "", sku: "", qty: "" });
               setTransferOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-100 text-violet-800 text-sm font-medium hover:bg-violet-200"
+            className="erp-btn erp-btn-secondary text-sm bg-violet-500/10 text-violet-700 dark:text-violet-300"
           >
-            <ArrowLeftRight size={16} />
+            <ArrowLeftRight size={18} />
             Transfer
           </button>
-          <button
-            type="button"
-            onClick={() => setAdjustOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800"
-          >
-            Stok düzelt
+          <button type="button" onClick={() => setAdjustOpen(true)} className="erp-btn erp-btn-secondary text-sm">
+            <Package size={18} />
+            Stok Düzelt
           </button>
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
-          >
-            <Plus size={16} />
-            Yeni depo
+          <button type="button" onClick={() => setCreateOpen(true)} className="erp-btn erp-btn-primary text-sm col-span-2 sm:col-span-1">
+            <Plus size={18} />
+            Yeni Depo
           </button>
         </div>
       </div>
@@ -313,7 +298,28 @@ export default function WarehousePage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-4 space-y-3">
-            <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Depolar</h3>
+            <h3 className="text-sm font-semibold erp-muted uppercase tracking-wide">Depolar</h3>
+            <div className="lg:hidden erp-scroll-x flex gap-2 pb-1">
+              {warehouses.map((w) => {
+                const active = w.warehouseId === selectedId;
+                return (
+                  <button
+                    key={`m-${w.warehouseId}`}
+                    type="button"
+                    onClick={() => setSelectedId(w.warehouseId)}
+                    className={`shrink-0 rounded-xl border px-4 py-3 min-w-[9rem] text-left ${
+                      active
+                        ? "border-[var(--erp-accent)] bg-[var(--erp-accent-soft)]"
+                        : "border-[var(--erp-border)] bg-[var(--erp-surface)]"
+                    }`}
+                  >
+                    <p className="font-bold text-sm text-[var(--erp-text)] truncate">{w.name}</p>
+                    <p className="text-xs erp-muted mt-1">{w.totalUnits ?? 0} adet</p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="hidden lg:block space-y-3">
             {warehouses.map((w) => {
               const active = w.warehouseId === selectedId;
               return (
@@ -351,6 +357,7 @@ export default function WarehousePage() {
                 </button>
               );
             })}
+          </div>
           </div>
 
           <div className="lg:col-span-8 space-y-4">
@@ -405,7 +412,25 @@ export default function WarehousePage() {
                   </button>
                 </div>
 
-                <div className="rounded-xl border border-slate-100 overflow-hidden max-h-[420px] overflow-y-auto">
+                <div className="rounded-xl border border-[var(--erp-border)] overflow-hidden max-h-[420px] overflow-y-auto">
+                  <div className="md:hidden divide-y divide-[var(--erp-border)]">
+                    {stockItems.length === 0 ? (
+                      <p className="py-8 text-center erp-muted text-sm">Bu depoda kayıt yok.</p>
+                    ) : (
+                      stockItems.map((item) => (
+                        <div key={`${item.productId}-${item.sku}`} className="p-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-[var(--erp-text)] truncate">{item.name}</p>
+                            <p className="text-xs font-mono erp-muted mt-0.5">{item.sku}</p>
+                          </div>
+                          <span className="text-lg font-bold tabular-nums text-[var(--erp-accent)] shrink-0">
+                            {item.stock}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="hidden md:block">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-slate-600 sticky top-0">
                       <tr>
@@ -432,6 +457,7 @@ export default function WarehousePage() {
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </div>
             ) : null}

@@ -18,6 +18,10 @@ const SettingSchema = new mongoose.Schema({
 
   webApiUrl: { type: String, default: '' },
   webApiToken: { type: String, default: '' },
+  /** Taban URL sonuna eklenir; varsayılan stock-price */
+  webApiStockPath: { type: String, default: 'stock-price' },
+  /** Doluysa taban+yol yerine doğrudan bu URL kullanılır (özel yazılım) */
+  webApiPushUrl: { type: String, default: '' },
 
   storeName: { type: String, default: 'Stok ERP' },
   printPackageContents: { type: Boolean, default: true },
@@ -32,6 +36,11 @@ const SettingSchema = new mongoose.Schema({
   portalSupportPhone: { type: String, default: '' },
   portalSupportEmail: { type: String, default: '' },
   portalWhatsapp: { type: String, default: '' },
+
+  /** Herkese açık üye olma (kayıt) */
+  authAllowSignup: { type: Boolean, default: true },
+  /** Kayıt sonrası yönetici onayı gerekli */
+  authRequireApproval: { type: Boolean, default: true },
 }, { timestamps: true });
 
 export default mongoose.models.Setting || mongoose.model('Setting', SettingSchema);

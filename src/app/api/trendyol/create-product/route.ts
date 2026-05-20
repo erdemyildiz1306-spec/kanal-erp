@@ -296,7 +296,9 @@ export async function POST(request: Request) {
       results.failedItemCount > 0 ||
       results.itemErrors.length > 0 ||
       results.batchStatus === 'FAILED' ||
-      results.batchStatus === 'COMPLETED_WITH_ERRORS';
+      results.batchStatus === 'COMPLETED_WITH_ERRORS' ||
+      results.batchStatus === 'NO_BATCH_ID' ||
+      (results.batchStatus === 'COMPLETED' && results.successItemCount === 0);
 
     if (batchFailed) {
       const detail = results.itemErrors.slice(0, 5).join('\n');
@@ -305,17 +307,42 @@ export async function POST(request: Request) {
           success: false,
           error:
             detail ||
-            `Trendyol toplu istek reddetti (${results.batchStatus || 'FAILED'}).`,
+            (results.batchStatus === 'COMPLETED' && results.successItemCount === 0
+              ? 'Trendyol isteği tamamlandı ama hiçbir barkod kabul edilmedi. Marka ID, kategori öznitelikleri ve görselleri kontrol edin.'
+              : `Trendyol toplu istek reddetti (${results.batchStatus || 'FAILED'}).`),
           batchRequestId: results.batchRequestId,
           batchStatus: results.batchStatus,
+          successItemCount: results.successItemCount,
           itemErrors: results.itemErrors,
         },
         { status: 400 }
       );
     }
 
+    if (results.batchStatus !== 'COMPLETED' || results.successItemCount < items.length) {
+      const partial =
+        results.successItemCount > 0 && results.successItemCount < items.length;
+      if (partial || results.batchStatus !== 'COMPLETED') {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              results.itemErrors[0] ??
+              (partial
+                ? `Yalnızca ${results.successItemCount}/${items.length} barkod kabul edildi.`
+                : `Trendyol kuyruk durumu: ${results.batchStatus || 'UNKNOWN'}.`),
+            batchRequestId: results.batchRequestId,
+            batchStatus: results.batchStatus,
+            successItemCount: results.successItemCount,
+            itemErrors: results.itemErrors,
+          },
+          { status: partial ? 400 : 502 }
+        );
+      }
+    }
+
     if (
-      results.batchStatus === 'TIMEOUT' ||
+      String(results.batchStatus) === 'TIMEOUT' ||
       results.itemErrors.some((e) => e.includes('kuyruk sonucu'))
     ) {
       return NextResponse.json(
@@ -343,11 +370,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `${items.length} barkod Trendyol onay kuyruğuna alındı. Panelde «Onay bekleyenler» listesinde görünmesi birkaç dakika sürebilir.`,
-      sent: items.length,
+      message:
+        `${results.successItemCount} barkod Trendyol «Onay bekleyenler» kuyruğuna alındı` +
+        (results.batchRequestId ? ` (işlem no: ${results.batchRequestId})` : '') +
+        `. Satıcı panelinde Ürünler → Onay bekleyenler listesine bakın — «Onaylı ürünler» değil. Birkaç dakika sürebilir.`,
+      sent: results.successItemCount,
       attributesUsed: (items[0]?.attributes as unknown[])?.length ?? 0,
       batchRequestId: results.batchRequestId,
       batchStatus: results.batchStatus,
+      successItemCount: results.successItemCount,
       results: results.submitResponse,
     });
   } catch (error: unknown) {

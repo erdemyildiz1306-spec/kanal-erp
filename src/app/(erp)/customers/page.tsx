@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { Plus, Users, Pencil, Ban, KeyRound, RotateCcw } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import PageHeader from "@/components/ui/PageHeader";
+import Spinner from "@/components/ui/Spinner";
+import MobileListCard from "@/components/ui/MobileListCard";
+import MobileActionButton from "@/components/ui/MobileActionButton";
 
 type CustomerRow = {
   _id: string;
@@ -148,33 +152,73 @@ export default function CustomersPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center flex-wrap gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Users size={24} />
-            Toptan Müşteriler
-          </h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Müşteri hesabı oluşturun; giriş sayfasında <strong>Müşteri</strong> sekmesi ile panele girerler.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800"
-        >
-          <Plus size={16} />
-          Yeni müşteri
-        </button>
-      </div>
+    <div className="erp-page max-w-5xl mx-auto">
+      <PageHeader
+        title="Müşteriler"
+        subtitle="Toptan müşteri hesapları — portal girişi"
+        action={
+          <button type="button" onClick={openCreate} className="erp-btn erp-btn-primary text-sm">
+            <Plus size={18} />
+            Yeni
+          </button>
+        }
+      />
 
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        {loading ? (
-          <p className="p-6 text-slate-500">Yükleniyor…</p>
-        ) : customers.length === 0 ? (
-          <p className="p-8 text-center text-slate-500">Henüz müşteri yok.</p>
-        ) : (
+      {loading ? (
+        <Spinner label="Müşteriler yükleniyor…" />
+      ) : customers.length === 0 ? (
+        <p className="erp-muted text-center py-10">Henüz müşteri yok.</p>
+      ) : (
+        <>
+          <div className="md:hidden space-y-2">
+            {customers.map((c) => (
+              <MobileListCard
+                key={c._id}
+                title={c.name}
+                subtitle={c.email}
+                badge={
+                  <span className="text-sm font-bold text-[var(--erp-text)]">
+                    {fmt(Number(c.balance) || 0)}
+                  </span>
+                }
+                meta={
+                  <>
+                    {c.companyName ? (
+                      <span className="px-2 py-0.5 rounded-md bg-[var(--erp-surface-2)]">{c.companyName}</span>
+                    ) : null}
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-xs font-semibold ${
+                        c.active ? "bg-emerald-500/15 text-emerald-700" : "bg-red-500/15 text-red-700"
+                      }`}
+                    >
+                      {c.active ? "Aktif" : "Pasif"}
+                    </span>
+                  </>
+                }
+                actions={
+                  <>
+                    <MobileActionButton onClick={() => openEdit(c)}>Düzenle</MobileActionButton>
+                    <MobileActionButton
+                      onClick={() => {
+                        setPasswordTarget(c);
+                        setNewPassword("");
+                      }}
+                    >
+                      Şifre
+                    </MobileActionButton>
+                    {c.active ? (
+                      <MobileActionButton variant="danger" onClick={() => setDeactivateTarget(c)}>
+                        Pasifleştir
+                      </MobileActionButton>
+                    ) : (
+                      <MobileActionButton onClick={() => void toggleActive(c, true)}>Aktifleştir</MobileActionButton>
+                    )}
+                  </>
+                }
+              />
+            ))}
+          </div>
+          <div className="hidden md:block erp-card overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
               <tr>
@@ -243,8 +287,9 @@ export default function CustomersPage() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
       <Modal
         open={modalOpen}

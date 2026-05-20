@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { ClipboardList, RefreshCw } from "lucide-react";
+import PageHeader from "@/components/ui/PageHeader";
+import Spinner from "@/components/ui/Spinner";
+import MobileListCard from "@/components/ui/MobileListCard";
 
 type LogRow = {
   _id: string;
@@ -32,66 +35,85 @@ export default function ActivityLogPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">İşlem Günlüğü</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Sipariş, stok ve entegrasyon işlemlerinin kaydı.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="flex items-center gap-2 bg-slate-100 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-200"
-        >
-          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          Yenile
-        </button>
-      </div>
+    <div className="erp-page max-w-5xl mx-auto">
+      <PageHeader
+        title="İşlem Günlüğü"
+        subtitle="Son 100 kayıt"
+        action={
+          <button type="button" onClick={() => void load()} className="erp-btn erp-btn-secondary text-sm">
+            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+            Yenile
+          </button>
+        }
+      />
 
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        {loading ? (
-          <p className="p-6 text-slate-500">Yükleniyor…</p>
-        ) : logs.length === 0 ? (
-          <p className="p-6 text-slate-500">Henüz kayıt yok.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
-                <tr>
-                  <th className="text-left px-4 py-3">Tarih</th>
-                  <th className="text-left px-4 py-3">Modül</th>
-                  <th className="text-left px-4 py-3">İşlem</th>
-                  <th className="text-left px-4 py-3">Detay</th>
-                  <th className="text-left px-4 py-3">Kullanıcı</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map((row) => (
-                  <tr key={row._id} className="border-t border-slate-100">
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+      {loading ? (
+        <Spinner label="Kayıtlar yükleniyor…" />
+      ) : logs.length === 0 ? (
+        <p className="erp-muted text-center py-10">Henüz kayıt yok.</p>
+      ) : (
+        <>
+          <div className="md:hidden space-y-2">
+            {logs.map((row) => (
+              <MobileListCard
+                key={row._id}
+                title={row.action}
+                subtitle={row.detail || undefined}
+                meta={
+                  <>
+                    <span className="px-2 py-0.5 rounded-md bg-[var(--erp-surface-2)]">
+                      {row.module || "genel"}
+                    </span>
+                    <span className="erp-muted">
                       {row.createdAt
-                        ? new Date(row.createdAt).toLocaleString("tr-TR")
+                        ? new Date(row.createdAt).toLocaleString("tr-TR", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })
                         : "—"}
-                    </td>
-                    <td className="px-4 py-3">{row.module || "—"}</td>
-                    <td className="px-4 py-3 font-medium text-slate-800">
-                      {row.action}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 max-w-md truncate">
-                      {row.detail || "—"}
-                    </td>
-                    <td className="px-4 py-3">{row.userName || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </span>
+                    {row.userName ? (
+                      <span className="px-2 py-0.5 rounded-md bg-[var(--erp-accent-soft)] text-[var(--erp-accent)]">
+                        {row.userName}
+                      </span>
+                    ) : null}
+                  </>
+                }
+              />
+            ))}
           </div>
-        )}
-      </div>
+          <div className="hidden md:block erp-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--erp-surface-2)] erp-muted text-xs uppercase">
+                  <tr>
+                    <th className="text-left px-4 py-3">Tarih</th>
+                    <th className="text-left px-4 py-3">Modül</th>
+                    <th className="text-left px-4 py-3">İşlem</th>
+                    <th className="text-left px-4 py-3">Detay</th>
+                    <th className="text-left px-4 py-3">Kullanıcı</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.map((row) => (
+                    <tr key={row._id} className="border-t border-[var(--erp-border)]">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {row.createdAt ? new Date(row.createdAt).toLocaleString("tr-TR") : "—"}
+                      </td>
+                      <td className="px-4 py-3">{row.module || "—"}</td>
+                      <td className="px-4 py-3 font-medium">{row.action}</td>
+                      <td className="px-4 py-3 max-w-md truncate">{row.detail || "—"}</td>
+                      <td className="px-4 py-3">{row.userName || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
 
-      <p className="text-xs text-slate-400 flex items-center gap-1">
+      <p className="text-xs erp-muted flex items-center gap-1">
         <ClipboardList size={14} />
         Son 100 kayıt gösterilir.
       </p>

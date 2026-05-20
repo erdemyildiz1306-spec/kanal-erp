@@ -519,8 +519,12 @@ export default function ProductsPage() {
     const params = new URLSearchParams(window.location.search);
     const q = params.get("q");
     const highlight = params.get("highlight");
+    const isNew = params.get("new") === "1";
     if (q || highlight) {
       applyProductsSearch(q ?? "", highlight ?? undefined);
+      window.history.replaceState(null, "", "/products");
+    } else if (isNew) {
+      openModalForNew();
       window.history.replaceState(null, "", "/products");
     }
   }, [isClient]);
@@ -877,7 +881,13 @@ export default function ProductsPage() {
       body: JSON.stringify({ productId }),
     });
     const text = await res.text();
-    let data: { success?: boolean; error?: string; message?: string } = {};
+    let data: {
+      success?: boolean;
+      error?: string;
+      message?: string;
+      batchRequestId?: string;
+      itemErrors?: string[];
+    } = {};
     try {
       data = text ? JSON.parse(text) : {};
     } catch {
@@ -888,11 +898,18 @@ export default function ProductsPage() {
     }
     if (!data.success) {
       const errText = String(data.error || "").trim();
+      const extra =
+        Array.isArray(data.itemErrors) && data.itemErrors.length
+          ? `\n\n${data.itemErrors.slice(0, 3).join("\n")}`
+          : data.batchRequestId
+            ? `\n\nİşlem no: ${data.batchRequestId}`
+            : "";
       return {
         ok: false,
         error:
-          errText ||
-          `Trendyol gönderimi başarısız (HTTP ${res.status}). Ayarlar > Trendyol API bilgilerini kontrol edin.`,
+          (errText ||
+            `Trendyol gönderimi başarısız (HTTP ${res.status}). Ayarlar > Trendyol API bilgilerini kontrol edin.`) +
+          extra,
       };
     }
     return {
@@ -914,7 +931,7 @@ export default function ProductsPage() {
       title,
       message:
         errs.length === 0 && ok > 0
-          ? `${ok}/${total} ürün Trendyol'a gönderildi. Onay bekleyenlerde birkaç dakika içinde görünür.`
+          ? `${ok}/${total} ürün Trendyol «Onay bekleyenler» kuyruğuna gitti. Satıcı panelinde Ürünler → Onay bekleyenler — onaylı ürünler listesi değil.`
           : ok > 0
             ? `${ok}/${total} ürün gönderildi; ${errs.length} üründe hata var.`
             : "Trendyol yayımlama başarısız — ürün mağazaya gitmedi.",
@@ -923,7 +940,7 @@ export default function ProductsPage() {
 
     if (errs.length === 0 && ok > 0) {
       alert(
-        `${title}\n\n${ok}/${total} ürün gönderildi.\nTrendyol satıcı panelinde «Onay bekleyenler» listesini kontrol edin (1–5 dk sürebilir).`
+        `${title}\n\n${ok}/${total} ürün gönderildi.\n\nTrendyol satıcı paneli:\nÜrünler → Onay bekleyenler\n(Onaylı ürünler listesinde görünmez — 1–5 dk bekleyin.)`
       );
     } else if (errs.length > 0) {
       alert(
@@ -2013,29 +2030,29 @@ export default function ProductsPage() {
         </div>
       )}
 
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-        <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
-          <div className="relative w-full max-w-md">
+      <div className="erp-card p-4 md:p-5">
+        <div className="flex flex-col gap-4 mb-4">
+          <div className="relative w-full">
             <input
-              type="text"
+              type="search"
               placeholder="Ürün adı, SKU veya barkod ara..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="erp-input pl-11"
             />
             <Search
-              className="absolute left-3 top-2.5 text-slate-400"
-              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--erp-text-muted)]"
+              size={20}
             />
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="erp-scroll-x flex gap-2 pb-1">
             <button
               type="button"
               onClick={() => setSelectedCategory("Tümü")}
-              className={`px-3 py-1.5 rounded-lg text-sm ${
+              className={`shrink-0 px-4 py-2.5 rounded-full text-sm font-semibold touch-target-sm ${
                 selectedCategory === "Tümü"
-                  ? "bg-blue-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  ? "bg-[var(--erp-accent)] text-white dark:text-[#0f1210]"
+                  : "bg-[var(--erp-surface-2)] text-[var(--erp-text-muted)] border border-[var(--erp-border)]"
               }`}
             >
               Tümü
@@ -2045,10 +2062,10 @@ export default function ProductsPage() {
                 key={t}
                 type="button"
                 onClick={() => setSelectedCategory(t)}
-                className={`px-3 py-1.5 rounded-lg text-sm truncate max-w-[140px] ${
+                className={`shrink-0 px-4 py-2.5 rounded-full text-sm font-semibold max-w-[10rem] truncate touch-target-sm ${
                   selectedCategory === t
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    ? "bg-[var(--erp-accent)] text-white dark:text-[#0f1210]"
+                    : "bg-[var(--erp-surface-2)] text-[var(--erp-text-muted)] border border-[var(--erp-border)]"
                 }`}
               >
                 {t}
@@ -2056,7 +2073,7 @@ export default function ProductsPage() {
             ))}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 items-center mb-4 pb-4 border-b border-slate-100">
+        <div className="erp-scroll-x flex gap-2 items-center mb-4 pb-4 border-b border-[var(--erp-border)]">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide mr-1">
             Stok
           </span>
@@ -2119,7 +2136,90 @@ export default function ProductsPage() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="md:hidden space-y-3">
+              {paginatedProducts.map((product) => {
+                const thumb = product.images?.[0]?.url;
+                const stockQty = productStockUnits(product);
+                const listPrice = Number(product.price) || 0;
+                const tyPrice = Number(product.prices?.trendyol) || listPrice;
+                return (
+                  <article
+                    key={product._id}
+                    id={`product-row-${product._id}`}
+                    className={`erp-card p-4 space-y-3 ${
+                      highlightProductId === String(product._id) ? "ring-2 ring-[var(--erp-accent)]" : ""
+                    }`}
+                  >
+                    <div className="flex gap-3">
+                      <div className="w-16 h-16 rounded-xl bg-[var(--erp-surface-2)] overflow-hidden flex items-center justify-center shrink-0 border border-[var(--erp-border)]">
+                        {thumb ? (
+                          <img src={thumb} alt="" className="object-cover w-full h-full" />
+                        ) : (
+                          <ImageIcon size={22} className="text-[var(--erp-text-muted)]" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            className="mt-1 rounded border-[var(--erp-border)]"
+                            checked={selectedProductIds.has(String(product._id))}
+                            onChange={() => toggleProductRowSelected(String(product._id))}
+                            aria-label={`Seç: ${product.name}`}
+                          />
+                          <div className="min-w-0">
+                            <p className="font-bold text-[var(--erp-text)] leading-snug">{product.name}</p>
+                            <p className="text-xs erp-muted mt-1 font-mono">{product.sku}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 px-2.5 py-1 rounded-full text-sm font-bold ${
+                          product.stock > (product.safetyStock ?? 2)
+                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                            : "bg-red-500/15 text-red-700 dark:text-red-300"
+                        }`}
+                      >
+                        {stockQty}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="px-2 py-1 rounded-lg bg-[var(--erp-surface-2)]">Liste ₺{listPrice.toFixed(0)}</span>
+                      <span className="px-2 py-1 rounded-lg bg-orange-500/10 text-orange-700 dark:text-orange-300">TY ₺{tyPrice.toFixed(0)}</span>
+                      {product.barcode ? (
+                        <span className="px-2 py-1 rounded-lg bg-[var(--erp-surface-2)] font-mono truncate max-w-full">
+                          {product.barcode}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleActionClick("Düzenle", product)}
+                        className="erp-btn erp-btn-secondary text-sm py-3"
+                      >
+                        Düzenle
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleActionClick("Stok Güncelle", product)}
+                        className="erp-btn erp-btn-primary text-sm py-3"
+                      >
+                        Stok
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleActionClick("Sil", product)}
+                        className="erp-btn erp-btn-ghost text-sm py-3 text-red-600"
+                      >
+                        Sil
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-500">

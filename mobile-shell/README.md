@@ -42,6 +42,25 @@ copy android\app\build\outputs\apk\debug\app-debug.apk ..\..\public\kanal-erp.ap
 
 Giriş sayfasında otomatik indirme banner'ı görünür.
 
+## Hızlı derleme (kurulum tamamlandıktan sonra)
+
+```bash
+cd mobile-shell
+npm run sync
+cd android
+./gradlew assembleDebug   # Windows: gradlew.bat assembleDebug
+cd ..
+node scripts/copy-apk.js
+```
+
+Veya tek satır (Windows PowerShell):
+
+```powershell
+cd mobile-shell/android; .\gradlew.bat assembleDebug; cd ..; node scripts/copy-apk.js
+```
+
+Canlı URL: `capacitor.config.json` → `server.url` = `https://erp-stok.vercel.app`
+
 ## Ortam değişkeni
 
 `.env.local`:

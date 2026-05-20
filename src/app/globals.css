@@ -1,28 +1,222 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --erp-bg: #f4f2ee;
+  --erp-surface: #ffffff;
+  --erp-surface-2: #faf8f6;
+  --erp-border: #e8e2da;
+  --erp-text: #1c1917;
+  --erp-text-muted: #78716c;
+  --erp-accent: #4a5d45;
+  --erp-accent-soft: #e8ede4;
+  --erp-sidebar: #3d4a42;
+  --erp-header: rgba(250, 248, 246, 0.95);
+  --erp-nav: rgba(255, 255, 255, 0.96);
+  --erp-shadow: 0 4px 24px rgba(28, 25, 23, 0.08);
+  --erp-radius: 1rem;
+  --erp-touch: 2.75rem;
+  --background: var(--erp-bg);
+  --foreground: var(--erp-text);
+}
+
+.dark {
+  --erp-bg: #0f1210;
+  --erp-surface: #171b18;
+  --erp-surface-2: #1e2420;
+  --erp-border: #2f3832;
+  --erp-text: #f5f5f4;
+  --erp-text-muted: #a8a29e;
+  --erp-accent: #9cb89a;
+  --erp-accent-soft: #243028;
+  --erp-sidebar: #121614;
+  --erp-header: rgba(23, 27, 24, 0.95);
+  --erp-nav: rgba(23, 27, 24, 0.98);
+  --erp-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --background: var(--erp-bg);
+  --foreground: var(--erp-text);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-erp-bg: var(--erp-bg);
+  --color-erp-surface: var(--erp-surface);
+  --color-erp-border: var(--erp-border);
+  --color-erp-accent: var(--erp-accent);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--erp-bg);
+  color: var(--erp-text);
+  font-family: var(--font-inter, system-ui, -apple-system, sans-serif);
+  overscroll-behavior-y: none;
+}
+
+.touch-target {
+  min-height: var(--erp-touch);
+  min-width: var(--erp-touch);
+}
+
+.touch-target-sm {
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+}
+
+.erp-card {
+  background: var(--erp-surface);
+  border: 1px solid var(--erp-border);
+  border-radius: var(--erp-radius);
+  box-shadow: var(--erp-shadow);
+}
+
+.erp-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.erp-page-title {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--erp-text);
+  letter-spacing: -0.02em;
+}
+
+.erp-muted {
+  color: var(--erp-text-muted);
+}
+
+.erp-input {
+  width: 100%;
+  min-height: var(--erp-touch);
+  padding: 0.75rem 1rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--erp-border);
+  background: var(--erp-surface);
+  color: var(--erp-text);
+  font-size: 1rem;
+}
+
+.erp-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--erp-accent) 25%, transparent);
+  border-color: var(--erp-accent);
+}
+
+.erp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: var(--erp-touch);
+  padding: 0.75rem 1.125rem;
+  border-radius: 0.875rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.erp-btn:active {
+  transform: scale(0.98);
+}
+
+.erp-btn-primary {
+  background: var(--erp-accent);
+  color: white;
+}
+
+.dark .erp-btn-primary {
+  color: #0f1210;
+}
+
+.erp-btn-secondary {
+  background: var(--erp-accent-soft);
+  color: var(--erp-accent);
+}
+
+.erp-btn-ghost {
+  background: transparent;
+  color: var(--erp-text);
+  border: 1px solid var(--erp-border);
+}
+
+.erp-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.erp-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+.safe-pb-nav {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 5.5rem);
+}
+
+@media (min-width: 1024px) {
+  .safe-pb-nav {
+    padding-bottom: 0;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.75rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-toast-in {
+  animation: toast-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.animate-slide-up {
+  animation: slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease;
+}
+
+.main-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+@media (max-width: 1023px) {
+  .erp-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 120px;
+  }
 }
 
 @media print {

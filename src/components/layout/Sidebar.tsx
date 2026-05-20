@@ -36,7 +36,7 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-[#3d4a42] text-[#e8e4df] border-r border-[#2f3832]">
+    <div className="flex h-full min-h-0 w-full flex-col bg-[var(--erp-sidebar)] text-[#e8e4df] border-r border-[#2f3832]">
       <div className="flex shrink-0 items-center justify-center h-[4.25rem] border-b border-[#323d36] px-3">
         <div className="text-center select-none">
           <h1 className="text-lg font-semibold tracking-wide text-[#f7f5f3]">

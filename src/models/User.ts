@@ -11,6 +11,12 @@ const UserSchema = new mongoose.Schema(
       default: "operator",
     },
     active: { type: Boolean, default: true },
+    /** admin | signup — kayıt kaynağı */
+    signupSource: {
+      type: String,
+      enum: ['admin', 'signup'],
+      default: 'admin',
+    },
   },
   { timestamps: true }
 );

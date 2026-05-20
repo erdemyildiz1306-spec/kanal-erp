@@ -67,18 +67,18 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-[250] flex items-center justify-center p-4 print:hidden"
+      className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden"
       role="dialog"
       aria-modal="true"
     >
       <button
         type="button"
         aria-label="Kapat"
-        className="absolute inset-0 bg-slate-900/55 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
-        className={`relative w-full ${sizeClass[size]} bg-white rounded-2xl shadow-2xl border border-slate-200/80 flex flex-col max-h-[min(92vh,900px)] ${className}`}
+        className={`relative w-full ${sizeClass[size]} bg-[var(--erp-surface)] rounded-t-3xl sm:rounded-2xl shadow-2xl border border-[var(--erp-border)] flex flex-col max-h-[min(96dvh,900px)] sm:max-h-[min(92vh,900px)] ${className}`}
       >
         {(title || subtitle || icon) && (
           <div

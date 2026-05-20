@@ -1271,17 +1271,57 @@ export function extractBatchRequestId(data: unknown): string {
   return String(o.batchRequestId ?? o.batchRequestID ?? '').trim();
 }
 
-function parseBatchItemFailures(data: unknown): string[] {
-  if (!data || typeof data !== 'object') return [];
+export type TrendyolBatchItemSummary = {
+  successCount: number;
+  failedCount: number;
+  totalItems: number;
+  itemErrors: string[];
+};
+
+function parseBatchItemRowError(
+  item: Record<string, unknown>,
+  barcode: string
+): string {
+  const status = String(item.status ?? '').trim();
+  const reasons = Array.isArray(item.failureReasons)
+    ? item.failureReasons
+        .map((r) =>
+          typeof r === 'string'
+            ? r.trim()
+            : r && typeof r === 'object'
+              ? String(
+                  (r as Record<string, unknown>).message ??
+                    (r as Record<string, unknown>).detail ??
+                    JSON.stringify(r)
+                ).trim()
+              : ''
+        )
+        .filter(Boolean)
+    : [];
+
+  const msg =
+    reasons.join(' · ') ||
+    String(item.failureReason ?? item.error ?? '').trim() ||
+    `Durum: ${status || 'FAILED'}`;
+
+  return barcode ? `${barcode}: ${msg}` : msg;
+}
+
+/** Batch yanıtından satır bazlı başarı/başarısızlık özeti */
+export function summarizeTrendyolBatchResult(data: unknown): TrendyolBatchItemSummary {
+  if (!data || typeof data !== 'object') {
+    return { successCount: 0, failedCount: 0, totalItems: 0, itemErrors: [] };
+  }
   const root = data as Record<string, unknown>;
   const items = Array.isArray(root.items) ? root.items : [];
-  const errors: string[] = [];
+  const itemErrors: string[] = [];
+  let successCount = 0;
+  let failedCount = 0;
 
   for (const row of items) {
     if (!row || typeof row !== 'object') continue;
     const item = row as Record<string, unknown>;
-    const status = String(item.status ?? '').trim();
-    if (status === 'SUCCESS') continue;
+    const status = String(item.status ?? '').trim().toUpperCase();
 
     const req =
       item.requestItem && typeof item.requestItem === 'object'
@@ -1294,36 +1334,31 @@ function parseBatchItemFailures(data: unknown): string[] {
       ).trim();
     }
 
-    const reasons = Array.isArray(item.failureReasons)
-      ? item.failureReasons
-          .map((r) =>
-            typeof r === 'string'
-              ? r.trim()
-              : r && typeof r === 'object'
-                ? String(
-                    (r as Record<string, unknown>).message ??
-                      (r as Record<string, unknown>).detail ??
-                      JSON.stringify(r)
-                  ).trim()
-                : ''
-          )
-          .filter(Boolean)
-      : [];
+    if (status === 'SUCCESS') {
+      successCount += 1;
+      continue;
+    }
 
-    const msg =
-      reasons.join(' · ') ||
-      String(item.failureReason ?? item.error ?? '').trim() ||
-      `Durum: ${status || 'FAILED'}`;
-
-    errors.push(barcode ? `${barcode}: ${msg}` : msg);
+    failedCount += 1;
+    itemErrors.push(parseBatchItemRowError(item, barcode));
   }
 
-  const failedCount = Number(root.failedItemCount ?? 0);
-  if (errors.length === 0 && failedCount > 0) {
-    errors.push(`${failedCount} satır Trendyol tarafından reddedildi (ayrıntı yok).`);
+  const apiFailedCount = Number(root.failedItemCount ?? 0);
+  if (failedCount === 0 && apiFailedCount > 0) {
+    failedCount = apiFailedCount;
+    itemErrors.push(`${apiFailedCount} satır Trendyol tarafından reddedildi (ayrıntı yok).`);
   }
 
-  return errors;
+  return {
+    successCount,
+    failedCount: Math.max(failedCount, apiFailedCount),
+    totalItems: items.length,
+    itemErrors,
+  };
+}
+
+function parseBatchItemFailures(data: unknown): string[] {
+  return summarizeTrendyolBatchResult(data).itemErrors;
 }
 
 export type TrendyolCreateBatchResult = {
@@ -1331,6 +1366,7 @@ export type TrendyolCreateBatchResult = {
   batchRequestId: string;
   batchStatus: string;
   failedItemCount: number;
+  successItemCount: number;
   itemErrors: string[];
 };
 
@@ -1374,8 +1410,7 @@ export async function pollTrendyolProductCreateBatch(
     lastData = response.data;
     const root = response.data as Record<string, unknown>;
     lastStatus = String(root.status ?? '').trim() || 'UNKNOWN';
-    const failedItemCount = Number(root.failedItemCount ?? 0);
-    const itemErrors = parseBatchItemFailures(response.data);
+    const summary = summarizeTrendyolBatchResult(response.data);
 
     if (
       lastStatus === 'COMPLETED' ||
@@ -1383,30 +1418,33 @@ export async function pollTrendyolProductCreateBatch(
       lastStatus === 'FAILED'
     ) {
       return {
-        submitResponse: null,
+        submitResponse: lastData,
         batchRequestId,
         batchStatus: lastStatus,
-        failedItemCount,
-        itemErrors,
+        failedItemCount: summary.failedCount,
+        successItemCount: summary.successCount,
+        itemErrors: summary.itemErrors,
       };
     }
 
-    if (failedItemCount > 0 && itemErrors.length > 0) {
+    if (summary.failedCount > 0 && summary.itemErrors.length > 0) {
       return {
-        submitResponse: null,
+        submitResponse: lastData,
         batchRequestId,
         batchStatus: lastStatus,
-        failedItemCount,
-        itemErrors,
+        failedItemCount: summary.failedCount,
+        successItemCount: summary.successCount,
+        itemErrors: summary.itemErrors,
       };
     }
   }
 
   return {
-    submitResponse: null,
+    submitResponse: lastData,
     batchRequestId,
     batchStatus: lastStatus || 'TIMEOUT',
     failedItemCount: 0,
+    successItemCount: 0,
     itemErrors: [
       'Trendyol kuyruk sonucu henüz hazır değil. Birkaç dakika sonra Trendyol panelinde «Onay bekleyenler» veya «Toplu işlem» geçmişini kontrol edin.',
     ],
@@ -1449,9 +1487,12 @@ export async function createTrendyolProductsBatch(
         return {
           submitResponse: result.data,
           batchRequestId: '',
-          batchStatus: 'SUBMITTED',
-          failedItemCount: 0,
-          itemErrors: [],
+          batchStatus: 'NO_BATCH_ID',
+          failedItemCount: 1,
+          successItemCount: 0,
+          itemErrors: [
+            'Trendyol isteği kabul etti ama batchRequestId dönmedi — ürünün oluştuğu doğrulanamadı. Ayarlar > Trendyol Satıcı ID ve API bilgilerini kontrol edin.',
+          ],
         } satisfies TrendyolCreateBatchResult;
       }
 

@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { Users as UsersIcon, Shield, UserCog, Pencil, RotateCcw } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import StatCard from "@/components/ui/StatCard";
+import PageHeader from "@/components/ui/PageHeader";
+import Spinner from "@/components/ui/Spinner";
+import MobileListCard from "@/components/ui/MobileListCard";
+import MobileActionButton from "@/components/ui/MobileActionButton";
 
 const roles = [
   { id: "admin", label: "Yönetici", desc: "Tam yetki — kullanıcı ve ayarlar" },
@@ -17,6 +21,7 @@ type ErpUser = {
   email: string;
   role: string;
   active: boolean;
+  signupSource?: string;
 };
 
 export default function UsersPage() {
@@ -93,6 +98,21 @@ export default function UsersPage() {
     const data = await res.json();
     if (data.success) void load();
     else alert(data.error || "Hata");
+  };
+
+  const approveUser = async (id: string) => {
+    if (!isAdmin) {
+      alert("Onay yalnızca yönetici tarafından yapılabilir.");
+      return;
+    }
+    const res = await fetch(`/api/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: true }),
+    });
+    const data = await res.json();
+    if (data.success) void load();
+    else alert(data.error || "Onaylanamadı.");
   };
 
   const saveRole = async () => {
@@ -175,6 +195,7 @@ export default function UsersPage() {
 
   const roleLabel = (id: string) => roles.find((r) => r.id === id)?.label ?? id;
   const activeCount = users.filter((u) => u.active).length;
+  const pendingCount = users.filter((u) => !u.active).length;
 
   return (
     <div className="space-y-8 max-w-4xl">
@@ -197,9 +218,10 @@ export default function UsersPage() {
         <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>
       ) : null}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <StatCard label="Toplam kullanıcı" value={users.length} icon={UsersIcon} tone="violet" />
         <StatCard label="Aktif" value={activeCount} tone="emerald" />
+        <StatCard label="Onay bekleyen" value={pendingCount} tone="amber" />
         <StatCard label="Yönetici" value={users.filter((u) => u.role === "admin").length} icon={Shield} tone="blue" />
       </div>
 
@@ -249,10 +271,55 @@ export default function UsersPage() {
         </div>
       ) : null}
 
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="erp-card overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-slate-500">Yükleniyor…</div>
+          <Spinner label="Kullanıcılar yükleniyor…" />
         ) : (
+          <>
+          <div className="md:hidden space-y-2 p-3">
+            {users.map((u) => (
+              <MobileListCard
+                key={u._id}
+                title={u.name}
+                subtitle={u.email}
+                badge={
+                  <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-violet-500/15 text-violet-700">
+                    {roleLabel(u.role)}
+                  </span>
+                }
+                meta={
+                  <span
+                    className={`px-2 py-0.5 rounded-md text-xs font-semibold ${
+                      u.active
+                        ? "bg-emerald-500/15 text-emerald-700"
+                        : u.signupSource === "signup"
+                          ? "bg-amber-500/15 text-amber-800"
+                          : "bg-[var(--erp-surface-2)] erp-muted"
+                    }`}
+                  >
+                    {u.active ? "Aktif" : u.signupSource === "signup" ? "Onay bekliyor" : "Pasif"}
+                  </span>
+                }
+                actions={
+                  isAdmin ? (
+                    <>
+                      {!u.active ? (
+                        <MobileActionButton onClick={() => void approveUser(u._id)}>Onayla</MobileActionButton>
+                      ) : null}
+                      <MobileActionButton onClick={() => openEditModal(u)}>Düzenle</MobileActionButton>
+                      <MobileActionButton onClick={() => openRoleModal(u)}>Rol</MobileActionButton>
+                      {u.active ? (
+                        <MobileActionButton variant="danger" onClick={() => void deactivate(u._id)}>
+                          Pasifleştir
+                        </MobileActionButton>
+                      ) : null}
+                    </>
+                  ) : undefined
+                }
+              />
+            ))}
+          </div>
+          <div className="hidden md:block">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
@@ -276,15 +343,28 @@ export default function UsersPage() {
                   <td className="py-3 px-4">
                     <span
                       className={`text-xs font-semibold px-2 py-1 rounded-lg ${
-                        u.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                        u.active
+                          ? "bg-emerald-50 text-emerald-700"
+                          : u.signupSource === "signup"
+                            ? "bg-amber-50 text-amber-800"
+                            : "bg-slate-100 text-slate-500"
                       }`}
                     >
-                      {u.active ? "Aktif" : "Pasif"}
+                      {u.active ? "Aktif" : u.signupSource === "signup" ? "Onay bekliyor" : "Pasif"}
                     </span>
                   </td>
                   <td className="py-3 px-4">
                     {isAdmin ? (
                       <div className="flex flex-wrap gap-1.5">
+                        {!u.active ? (
+                          <button
+                            type="button"
+                            onClick={() => void approveUser(u._id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100"
+                          >
+                            Onayla
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => openEditModal(u)}
@@ -328,6 +408,8 @@ export default function UsersPage() {
               ))}
             </tbody>
           </table>
+          </div>
+          </>
         )}
       </div>
 

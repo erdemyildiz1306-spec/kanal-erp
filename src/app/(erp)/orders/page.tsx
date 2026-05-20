@@ -381,32 +381,32 @@ export default function OrdersPage() {
   return (
     <div className="space-y-6 relative">
       {/* Finansal Kar Analiz Bannerı */}
-      <div className="grid grid-cols-3 gap-6 print:hidden">
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
-          <div className="p-3 rounded-lg bg-green-50 text-green-600">
-            <DollarSign size={24} />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 print:hidden">
+        <div className="erp-card p-4 flex items-center gap-3">
+          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-600">
+            <DollarSign size={22} />
           </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold">Toplam Ciro</p>
-            <h4 className="text-xl font-bold text-slate-800">₺{financialSummary.revenue.toFixed(2)}</h4>
-          </div>
-        </div>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
-          <div className="p-3 rounded-lg bg-red-50 text-red-600">
-            <DollarSign size={24} />
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold">Toplam Ürün Alış Maliyeti</p>
-            <h4 className="text-xl font-bold text-slate-800">₺{financialSummary.cost.toFixed(2)}</h4>
+          <div className="min-w-0">
+            <p className="text-xs erp-muted font-semibold truncate">Toplam Ciro</p>
+            <h4 className="text-lg font-bold text-[var(--erp-text)]">₺{financialSummary.revenue.toFixed(2)}</h4>
           </div>
         </div>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
-          <div className="p-3 rounded-lg bg-blue-50 text-blue-600">
-            <DollarSign size={24} />
+        <div className="erp-card p-4 flex items-center gap-3">
+          <div className="p-3 rounded-xl bg-red-500/10 text-red-600">
+            <DollarSign size={22} />
           </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold">Toplam Net Karlılık</p>
-            <h4 className="text-xl font-bold text-green-700">₺{financialSummary.profit.toFixed(2)}</h4>
+          <div className="min-w-0">
+            <p className="text-xs erp-muted font-semibold truncate">Alış Maliyeti</p>
+            <h4 className="text-lg font-bold text-[var(--erp-text)]">₺{financialSummary.cost.toFixed(2)}</h4>
+          </div>
+        </div>
+        <div className="erp-card p-4 flex items-center gap-3">
+          <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600">
+            <DollarSign size={22} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs erp-muted font-semibold truncate">Net Kâr</p>
+            <h4 className="text-lg font-bold text-emerald-600">₺{financialSummary.profit.toFixed(2)}</h4>
           </div>
         </div>
       </div>
@@ -430,77 +430,128 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <div className="flex justify-between items-center print:hidden">
+      <div className="flex flex-col gap-4 print:hidden">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Sipariş Yönetimi & Kargo</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <h2 className="erp-page-title">Siparişler</h2>
+          <p className="text-sm erp-muted mt-1 hidden sm:block">
             Trendyol siparişleri önce <strong>Beklemede</strong> gelir; etiket
-            yazdırıldığında <strong>Hazırlanıyor</strong> olur, stok düşer ve
-            Trendyol&apos;a işleme alındı bildirilir. ERP açıkken ~90 sn&apos;de
-            bir otomatik senkronize edilir.
+            yazdırıldığında <strong>Hazırlanıyor</strong> olur, stok düşer.
           </p>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => void loadPickingList()}
             disabled={pickingLoading}
-            className="flex items-center space-x-2 bg-violet-100 text-violet-800 px-4 py-2 rounded-lg hover:bg-violet-200 transition-colors disabled:opacity-50"
+            className="erp-btn erp-btn-secondary text-sm flex-1 sm:flex-none min-w-[8rem]"
           >
             <ListChecks size={18} />
-            <span>{pickingLoading ? "Liste…" : "Picking Listesi"}</span>
+            <span>{pickingLoading ? "Liste…" : "Picking"}</span>
           </button>
-          <button 
-            onClick={syncTrendyolOrders} 
+          <button
+            onClick={syncTrendyolOrders}
             disabled={isSyncing}
-            className="flex items-center space-x-2 bg-orange-100 text-orange-700 px-4 py-2 rounded-lg hover:bg-orange-200 transition-colors disabled:opacity-50"
+            className="erp-btn erp-btn-secondary text-sm flex-1 sm:flex-none min-w-[8rem] bg-orange-500/10 text-orange-700 dark:text-orange-300"
           >
             <DownloadCloud size={18} />
-            <span>Trendyol'dan Çek</span>
+            <span>Trendyol</span>
           </button>
-          <button 
+          <button
             onClick={syncWebOrders}
             disabled={isSyncing}
-            className="flex items-center space-x-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
+            className="erp-btn erp-btn-secondary text-sm flex-1 sm:flex-none min-w-[8rem] bg-blue-500/10 text-blue-700 dark:text-blue-300"
           >
             <DownloadCloud size={18} />
-            <span>Siteden Çek</span>
+            <span>Site</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden print:hidden">
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-          <div className="flex space-x-2">
+      <div className="erp-card overflow-hidden print:hidden">
+        <div className="p-3 md:p-4 border-b border-[var(--erp-border)] space-y-3 bg-[var(--erp-surface-2)]">
+          <div className="erp-scroll-x flex gap-2 pb-1">
             {["Tümü", "Beklemede", "Hazırlanıyor", "Kargolandı", "Teslim Edildi", "İptal Edildi", "İade Edildi"].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                  activeTab === tab ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                className={`shrink-0 px-4 py-2.5 rounded-full text-sm font-semibold transition-all touch-target-sm ${
+                  activeTab === tab
+                    ? "bg-[var(--erp-accent)] text-white dark:text-[#0f1210]"
+                    : "bg-[var(--erp-surface)] text-[var(--erp-text-muted)] border border-[var(--erp-border)]"
                 }`}
               >
                 {tab}
               </button>
             ))}
           </div>
-          <div className="relative w-64">
+          <div className="relative w-full">
             <input
-              type="text"
+              type="search"
               placeholder="Sipariş no veya müşteri ara..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 text-sm rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="erp-input pl-11 text-sm"
             />
-            <Search className="absolute left-3 top-2 text-slate-400" size={16} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--erp-text-muted)]" size={18} />
           </div>
         </div>
 
         {loading ? (
-          <div className="py-12 text-center text-slate-500 font-medium">Siparişler Yükleniyor...</div>
+          <div className="py-12 text-center erp-muted font-medium">Siparişler yükleniyor…</div>
         ) : sortedFilteredOrders.length === 0 ? (
-          <div className="py-12 text-center text-slate-400">Aradığınız kriterlere uygun sipariş bulunamadı.</div>
+          <div className="py-12 text-center erp-muted">Aradığınız kriterlere uygun sipariş bulunamadı.</div>
         ) : (
+          <>
+          <div className="md:hidden divide-y divide-[var(--erp-border)]">
+            {sortedFilteredOrders.map((order) => {
+              const profitMargin = order.totalAmount > 0 ? ((order.profitAmount / order.totalAmount) * 100).toFixed(0) : "0";
+              return (
+                <article key={order._id} className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-[var(--erp-text)]">{order.orderNumber}</p>
+                      <p className="text-sm erp-muted mt-0.5 truncate">{order.customerName}</p>
+                    </div>
+                    <span className="text-base font-bold text-[var(--erp-text)] shrink-0">
+                      ₺{order.totalAmount?.toFixed(2) || "0.00"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    {order.platform === "trendyol" ? (
+                      <span className="px-2 py-1 rounded-lg bg-orange-500/15 text-orange-700 dark:text-orange-300 font-semibold">Trendyol</span>
+                    ) : order.platform === "web" ? (
+                      <span className="px-2 py-1 rounded-lg bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold">Web</span>
+                    ) : (
+                      <span className="px-2 py-1 rounded-lg bg-[var(--erp-accent-soft)] text-[var(--erp-accent)] font-semibold">Diğer</span>
+                    )}
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${statusBadgeClass(order.status)}`}>
+                      {order.status}
+                    </span>
+                    <span className="erp-muted">Kâr ₺{order.profitAmount?.toFixed(2) || "0.00"} · %{profitMargin}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedOrder(order); setIsViewModalOpen(true); }}
+                      className="erp-btn erp-btn-secondary text-sm py-3"
+                    >
+                      <Eye size={18} />
+                      Görüntüle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePrint(order)}
+                      className="erp-btn erp-btn-primary text-sm py-3"
+                    >
+                      <Printer size={18} />
+                      Etiket
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 text-sm text-slate-500 bg-white">
@@ -574,6 +625,8 @@ export default function OrdersPage() {
               })}
             </tbody>
           </table>
+          </div>
+          </>
         )}
       </div>
 
