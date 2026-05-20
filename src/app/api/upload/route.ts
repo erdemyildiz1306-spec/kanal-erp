@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import { randomBytes } from 'crypto';
+import { put } from '@vercel/blob';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
 import {
   isTrendyolPublicImageUrl,
@@ -11,6 +12,14 @@ import {
 export const runtime = 'nodejs';
 
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+function isVercelRuntime(): boolean {
+  return Boolean(process.env.VERCEL);
+}
+
+function canUseLocalUploads(): boolean {
+  return !isVercelRuntime();
+}
 
 export async function POST(request: Request) {
   try {
@@ -29,7 +38,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Dosya en fazla 5 MB olabilir.' }, { status: 400 });
     }
 
-    const buf = Buffer.from(await file.arrayBuffer());
     const ext =
       file.type === 'image/png'
         ? 'png'
@@ -38,23 +46,53 @@ export async function POST(request: Request) {
           : file.type === 'image/gif'
             ? 'gif'
             : 'jpg';
-    const name = `${Date.now()}-${randomBytes(6).toString('hex')}.${ext}`;
-    const dir = path.join(process.cwd(), 'public', 'uploads', 'products');
-    await mkdir(dir, { recursive: true });
-    const fsPath = path.join(dir, name);
-    await writeFile(fsPath, buf);
+    const name = `products/${Date.now()}-${randomBytes(6).toString('hex')}.${ext}`;
 
-    const publicUrl = `/uploads/products/${name}`;
+    let publicUrl: string;
+    let absoluteUrl: string;
+
+    if (isVercelRuntime() || process.env.BLOB_READ_WRITE_TOKEN) {
+      const blob = await put(name, file, {
+        access: 'public',
+        addRandomSuffix: false,
+        contentType: file.type,
+      });
+      publicUrl = blob.url;
+      absoluteUrl = blob.url;
+    } else if (canUseLocalUploads()) {
+      const buf = Buffer.from(await file.arrayBuffer());
+      const fileName = name.replace(/^products\//, '');
+      const dir = path.join(process.cwd(), 'public', 'uploads', 'products');
+      await mkdir(dir, { recursive: true });
+      const fsPath = path.join(dir, fileName);
+      await writeFile(fsPath, buf);
+      publicUrl = `/uploads/products/${fileName}`;
+      const settingsDoc = await resolveSingletonSettingDocument();
+      const imageBase = String(settingsDoc.get('publicAppUrl') ?? '').trim();
+      absoluteUrl = toAbsolutePublicUrl(publicUrl, imageBase);
+    } else {
+      return NextResponse.json(
+        {
+          error:
+            'Bu ortamda dosya diske yazılamaz. Vercel Blob yapılandırın veya HTTPS görsel linki yapıştırın.',
+        },
+        { status: 503 }
+      );
+    }
+
     const settingsDoc = await resolveSingletonSettingDocument();
     const imageBase = String(settingsDoc.get('publicAppUrl') ?? '').trim();
-    const absoluteUrl = toAbsolutePublicUrl(publicUrl, imageBase);
+    if (!absoluteUrl.startsWith('http')) {
+      absoluteUrl = toAbsolutePublicUrl(publicUrl, imageBase);
+    }
     const trendyolReady = isTrendyolPublicImageUrl(absoluteUrl);
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      url: absoluteUrl.startsWith('http') ? absoluteUrl : publicUrl,
       absoluteUrl,
       trendyolReady,
+      storage: isVercelRuntime() || process.env.BLOB_READ_WRITE_TOKEN ? 'blob' : 'local',
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Yükleme hatası';

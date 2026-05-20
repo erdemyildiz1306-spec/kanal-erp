@@ -370,22 +370,12 @@ export default function ProductsPage() {
       .slice(0, 100);
   }, [categoryLeaves, categorySearch]);
 
-  const variantColorOptions = useMemo(() => {
-    const { colorField } = findVariantDimensionFields(tyAttrFields);
-    if (colorField?.values.length) {
-      return uniqueStrings(colorField.values.map((v) => v.name));
-    }
-    return [...PRESET_VARIANT_COLORS];
-  }, [tyAttrFields]);
+  const variantColorOptions = useMemo(() => [...PRESET_VARIANT_COLORS], []);
 
-  const variantSizeOptions = useMemo(() => {
-    const { sizeField, ageField } = findVariantDimensionFields(tyAttrFields);
-    const field = sizeField ?? ageField;
-    if (field?.values.length) {
-      return uniqueStrings(field.values.map((v) => v.name));
-    }
-    return [...presetSizesForKind(sizePresetKind)];
-  }, [tyAttrFields, sizePresetKind]);
+  const variantSizeOptions = useMemo(
+    () => [...presetSizesForKind(sizePresetKind)],
+    [sizePresetKind]
+  );
 
   const productLevelTyFields = useMemo(
     () => fieldsForProductLevel(tyAttrFields, productData.hasVariants),
@@ -570,10 +560,11 @@ export default function ProductsPage() {
       fd.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       const data = await res.json();
-      if (data.success && data.url) {
+      if (data.success && (data.absoluteUrl || data.url)) {
+        const savedUrl = String(data.absoluteUrl || data.url).trim();
         setImages((prev) => {
           const n = [...prev];
-          n[idx] = { url: data.url };
+          n[idx] = { url: savedUrl };
           return n;
         });
         if (data.trendyolReady === false) {
@@ -2952,15 +2943,6 @@ export default function ProductsPage() {
                             </button>
                           ))}
                         </div>
-
-                        {tyAttrFields.length > 0 &&
-                        findVariantDimensionFields(tyAttrFields).sizeField
-                          ?.values.length ? (
-                          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-                            Beden listesi bu kategorinin Trendyol değerlerinden
-                            geliyor; şablon sekmeleri yedek içindir.
-                          </p>
-                        ) : null}
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                           <div className="rounded-lg border border-slate-100 p-3 space-y-2">
