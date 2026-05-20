@@ -128,6 +128,30 @@ body {
   opacity: 0.85;
 }
 
+/** Stok adedi — APK WebView'da net okunabilir rakamlar */
+.erp-stock-input {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: center;
+  color: var(--erp-text);
+  -webkit-text-fill-color: var(--erp-text);
+  background: var(--erp-surface-2);
+  border: 2px solid var(--erp-border);
+}
+
+.erp-stock-input:focus {
+  border-color: var(--erp-accent);
+  background: var(--erp-surface);
+}
+
+@media (max-width: 1023px) {
+  .erp-stock-input {
+    min-height: 3rem;
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+}
+
 .erp-btn {
   display: inline-flex;
   align-items: center;
@@ -246,6 +270,17 @@ body {
   .scanner-card video {
     content-visibility: visible;
     contain: none;
+  }
+
+  /* APK WebView: form alanlarında metin rengi kaybolmasın */
+  :where(input, select, textarea) {
+    color: var(--erp-text);
+    -webkit-text-fill-color: var(--erp-text);
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
   }
 }
 

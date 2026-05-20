@@ -3712,7 +3712,7 @@ export default function ProductsPage() {
             <button
               type="button"
               onClick={() => setIsStockModalOpen(false)}
-              className="px-4 py-2 border border-slate-200 rounded-xl hover:bg-white"
+              className="erp-btn erp-btn-ghost px-4 py-2"
             >
               İptal
             </button>
@@ -3720,7 +3720,7 @@ export default function ProductsPage() {
               type="button"
               disabled={stockSaving}
               onClick={() => void confirmStockUpdate()}
-              className="px-4 py-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-50"
+              className="erp-btn erp-btn-primary px-4 py-2 disabled:opacity-50"
             >
               {stockSaving ? "Kaydediliyor…" : "Kaydet"}
             </button>
@@ -3730,48 +3730,93 @@ export default function ProductsPage() {
         {selectedProduct &&
           (selectedProduct.hasVariants && stockVariantRows.length > 0 ? (
               <div className="space-y-4">
-                <p className="text-xs text-slate-500">
+                <p className="text-xs erp-muted">
                   Her satır bir varyant (beden / renk). Yalnızca değiştirmek
                   istediğiniz satırın stok adedini güncelleyin.
                 </p>
-                <div className="overflow-x-auto rounded-xl border border-slate-200">
+
+                {/* Mobil / APK: kart düzeni — stok rakamları net */}
+                <div className="lg:hidden space-y-3">
+                  {stockVariantRows.map((row, idx) => (
+                    <div
+                      key={`m-${row.sku}-${row.barcode}-${idx}`}
+                      className="rounded-xl border border-[var(--erp-border)] bg-[var(--erp-surface-2)] p-4"
+                    >
+                      <p className="font-semibold text-[var(--erp-text)] text-base">
+                        {variantStockLabel(row)}
+                      </p>
+                      <p className="text-[11px] erp-muted font-mono mt-1 truncate">
+                        {row.sku}
+                      </p>
+                      {row.barcode ? (
+                        <p className="text-[11px] erp-muted font-mono truncate">
+                          {row.barcode}
+                        </p>
+                      ) : null}
+                      <label className="block text-xs font-semibold erp-muted mt-3 mb-1.5">
+                        Stok adedi
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        value={row.stock}
+                        onChange={(e) =>
+                          setStockVariantRows((prev) => {
+                            const next = [...prev];
+                            next[idx] = {
+                              ...next[idx],
+                              stock: e.target.value,
+                            };
+                            return next;
+                          })
+                        }
+                        className="erp-input erp-stock-input w-full max-w-[8rem]"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Masaüstü: tablo */}
+                <div className="hidden lg:block overflow-x-auto rounded-xl border border-[var(--erp-border)]">
                   <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-left text-xs text-slate-500">
+                    <thead className="bg-[var(--erp-surface-2)] text-left text-xs erp-muted">
                       <tr>
                         <th className="py-2.5 px-3 font-medium">Beden / Renk</th>
                         <th className="py-2.5 px-3 font-medium">SKU</th>
                         <th className="py-2.5 px-3 font-medium">Barkod</th>
-                        <th className="py-2.5 px-3 font-medium w-28">Stok</th>
+                        <th className="py-2.5 px-3 font-medium w-32">Stok</th>
                       </tr>
                     </thead>
                     <tbody>
                       {stockVariantRows.map((row, idx) => (
                         <tr
                           key={`${row.sku}-${row.barcode}-${idx}`}
-                          className="border-t border-slate-100"
+                          className="border-t border-[var(--erp-border)]"
                         >
                           <td className="py-2.5 px-3">
-                            <span className="font-medium text-slate-800">
+                            <span className="font-medium text-[var(--erp-text)]">
                               {variantStockLabel(row)}
                             </span>
                             {row.sizeLabel && row.colorLabel ? null : (
-                              <span className="block text-[11px] text-slate-400 mt-0.5">
+                              <span className="block text-[11px] erp-muted mt-0.5">
                                 {row.sizeLabel || row.colorLabel
                                   ? "Eksik etiket — düzenlemeden stok güncellenebilir"
                                   : "Beden/renk etiketi yok"}
                               </span>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 font-mono text-xs text-slate-600">
+                          <td className="py-2.5 px-3 font-mono text-xs erp-muted">
                             {row.sku}
                           </td>
-                          <td className="py-2.5 px-3 font-mono text-xs text-slate-600">
+                          <td className="py-2.5 px-3 font-mono text-xs erp-muted">
                             {row.barcode}
                           </td>
                           <td className="py-2.5 px-3">
                             <input
                               type="number"
                               min={0}
+                              inputMode="numeric"
                               value={row.stock}
                               onChange={(e) =>
                                 setStockVariantRows((prev) => {
@@ -3783,7 +3828,7 @@ export default function ProductsPage() {
                                   return next;
                                 })
                               }
-                              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                              className="erp-input erp-stock-input w-full min-w-[5rem]"
                             />
                           </td>
                         </tr>
@@ -3791,7 +3836,7 @@ export default function ProductsPage() {
                     </tbody>
                   </table>
                 </div>
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-[var(--erp-text)]">
                   Toplam stok:{" "}
                   <strong>
                     {stockVariantRows.reduce(
@@ -3803,15 +3848,16 @@ export default function ProductsPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                <label className="text-xs font-medium text-slate-600">
+                <label className="text-xs font-medium erp-muted">
                   Stok adedi
                 </label>
                 <input
                   type="number"
                   min={0}
+                  inputMode="numeric"
                   value={newStockValue}
                   onChange={(e) => setNewStockValue(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg"
+                  className="erp-input erp-stock-input w-full max-w-[10rem]"
                 />
               </div>
             ))}
