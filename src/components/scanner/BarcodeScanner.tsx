@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
-import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library";
+import {
+  BarcodeFormat,
+  BinaryBitmap,
+  DecodeHintType,
+  HTMLCanvasElementLuminanceSource,
+  HybridBinarizer,
+  MultiFormatReader,
+  NotFoundException,
+} from "@zxing/library";
 
 const BARCODE_FORMATS = [
   BarcodeFormat.EAN_13,
@@ -27,6 +35,8 @@ const NATIVE_FORMATS = [
   "itf",
 ];
 
+const SCAN_INTERVAL_MS = 120;
+
 import { normalizeBarcode } from "@/lib/barcode-normalize";
 import {
   ensureNativeCameraPermission,
@@ -47,6 +57,18 @@ declare global {
   interface Window {
     BarcodeDetector?: new (options?: { formats: string[] }) => NativeBarcodeDetector;
   }
+}
+
+function isNativeShell(): boolean {
+  if (typeof window === "undefined") return false;
+  const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return Boolean(cap?.isNativePlatform?.());
+}
+
+function isMobileScannerContext(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (isNativeShell()) return true;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
 function supportsNativeBarcodeDetector(): boolean {
@@ -71,18 +93,16 @@ export async function requestScannerStream(): Promise<MediaStream> {
 
   await ensureNativeCameraPermission();
 
-  const baseVideo = {
+  const baseVideo: MediaTrackConstraints = {
     width: { ideal: 1280 },
     height: { ideal: 720 },
+    facingMode: { ideal: "environment" },
   };
 
   try {
     return await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: {
-        ...baseVideo,
-        facingMode: { ideal: "environment" },
-      },
+      video: baseVideo,
     });
   } catch (firstErr) {
     try {
@@ -91,13 +111,46 @@ export async function requestScannerStream(): Promise<MediaStream> {
       return await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
-          ...baseVideo,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
           deviceId: { exact: deviceId },
         },
       });
     } catch (secondErr) {
       throw mapCameraError(secondErr ?? firstErr);
     }
+  }
+}
+
+async function waitForVideoFrames(video: HTMLVideoElement, timeoutMs = 10000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (video.videoWidth > 0 && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  return video.videoWidth > 0;
+}
+
+function createZxingReader() {
+  const hints = new Map<DecodeHintType, unknown>();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, BARCODE_FORMATS);
+  hints.set(DecodeHintType.TRY_HARDER, true);
+  const reader = new MultiFormatReader();
+  reader.setHints(hints);
+  return reader;
+}
+
+function decodeCanvasWithZxing(reader: MultiFormatReader, canvas: HTMLCanvasElement): string | null {
+  try {
+    const source = new HTMLCanvasElementLuminanceSource(canvas);
+    const bitmap = new BinaryBitmap(new HybridBinarizer(source));
+    const result = reader.decodeWithState(bitmap);
+    return result.getText();
+  } catch (err) {
+    if (err instanceof NotFoundException) return null;
+    return null;
   }
 }
 
@@ -124,7 +177,7 @@ export default function BarcodeScanner({
   const onErrorRef = useRef(onError);
   const onReadyRef = useRef(onReady);
   const [live, setLive] = useState(false);
-  const [engine, setEngine] = useState<"native" | "zxing" | null>(null);
+  const [engine, setEngine] = useState<"native" | "zxing" | "hybrid" | null>(null);
 
   useEffect(() => {
     onScanRef.current = onScan;
@@ -186,6 +239,7 @@ export default function BarcodeScanner({
       video.setAttribute("webkit-playsinline", "true");
       video.muted = true;
       video.playsInline = true;
+      video.autoplay = true;
       video.srcObject = mediaStream;
 
       try {
@@ -195,54 +249,108 @@ export default function BarcodeScanner({
         return;
       }
 
+      const framesReady = await waitForVideoFrames(video);
       if (cancelled) return;
+      if (!framesReady) {
+        onErrorRef.current?.("Kamera görüntüsü hazır değil. Tekrar deneyin.");
+        return;
+      }
+
       setLive(true);
       onReadyRef.current?.();
 
-      if (supportsNativeBarcodeDetector()) {
-        try {
-          const detector = new window.BarcodeDetector!({ formats: NATIVE_FORMATS });
-          setEngine("native");
+      const useCanvasLoop =
+        isMobileScannerContext() ||
+        !supportsNativeBarcodeDetector();
 
-          const tick = async () => {
-            if (cancelled || !videoRef.current) return;
-            const el = videoRef.current;
-            if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-              try {
-                const codes = await detector.detect(el);
-                if (codes.length > 0 && codes[0]?.rawValue) {
-                  emitScan(codes[0].rawValue);
-                  return;
-                }
-              } catch {
-                /* frame decode miss */
-              }
-            }
+      if (useCanvasLoop) {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) {
+          onErrorRef.current?.("Tarayıcı canvas desteği yok.");
+          return;
+        }
+
+        const zxingReader = createZxingReader();
+        let detector: NativeBarcodeDetector | null = null;
+        let mode: "hybrid" | "zxing" = "zxing";
+
+        if (supportsNativeBarcodeDetector()) {
+          try {
+            detector = new window.BarcodeDetector!({ formats: NATIVE_FORMATS });
+            mode = "hybrid";
+          } catch {
+            detector = null;
+          }
+        }
+
+        setEngine(mode);
+
+        let lastAttempt = 0;
+
+        const tick = async () => {
+          if (cancelled || !videoRef.current) return;
+          const el = videoRef.current;
+
+          if (el.videoWidth <= 0 || el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
             rafRef.current = requestAnimationFrame(() => {
               void tick();
             });
-          };
+            return;
+          }
+
+          const now = Date.now();
+          if (now - lastAttempt < SCAN_INTERVAL_MS) {
+            rafRef.current = requestAnimationFrame(() => {
+              void tick();
+            });
+            return;
+          }
+          lastAttempt = now;
+
+          canvas.width = el.videoWidth;
+          canvas.height = el.videoHeight;
+          ctx.drawImage(el, 0, 0, canvas.width, canvas.height);
+
+          if (detector) {
+            try {
+              const codes = await detector.detect(canvas);
+              const raw = codes[0]?.rawValue;
+              if (raw) {
+                emitScan(raw);
+                return;
+              }
+            } catch {
+              /* ZXing yedek */
+            }
+          }
+
+          const zxingText = decodeCanvasWithZxing(zxingReader, canvas);
+          if (zxingText) {
+            emitScan(zxingText);
+            return;
+          }
 
           rafRef.current = requestAnimationFrame(() => {
             void tick();
           });
-          return;
-        } catch {
-          /* fall through to zxing */
-        }
+        };
+
+        rafRef.current = requestAnimationFrame(() => {
+          void tick();
+        });
+        return;
       }
 
       try {
         const hints = new Map<DecodeHintType, unknown>();
         hints.set(DecodeHintType.POSSIBLE_FORMATS, BARCODE_FORMATS);
         hints.set(DecodeHintType.TRY_HARDER, true);
-
         const reader = new BrowserMultiFormatReader(hints, {
           delayBetweenScanAttempts: 120,
           delayBetweenScanSuccess: 1500,
           tryPlayVideoTimeout: 10000,
         });
-
         setEngine("zxing");
         const controls = await reader.decodeFromStream(mediaStream, video, (result, error) => {
           if (cancelled) return;
@@ -287,7 +395,7 @@ export default function BarcodeScanner({
         <div className="pointer-events-none absolute inset-x-6 top-1/2 -translate-y-1/2 h-24 border-2 border-emerald-400/90 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
         {live ? (
           <span className="absolute top-3 left-3 text-[11px] font-semibold px-2 py-1 rounded-full bg-emerald-600 text-white">
-            {engine === "native" ? "Hızlı tarama" : "Taranıyor…"}
+            {engine === "hybrid" ? "Mobil tarama" : engine === "native" ? "Hızlı tarama" : "Taranıyor…"}
           </span>
         ) : (
           <span className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
@@ -296,7 +404,7 @@ export default function BarcodeScanner({
         )}
       </div>
       <p className="text-center pb-2 pt-2 text-xs erp-muted">
-        Barkodu yatay tutun, yeşil çerçeveye hizalayın
+        Barkodu yatay tutun, yeşil çerçeveye hizalayın · 15–30 cm mesafe
       </p>
     </div>
   );
