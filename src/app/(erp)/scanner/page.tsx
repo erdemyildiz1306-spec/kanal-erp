@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Html5QrcodeScanner } from "html5-qrcode";
-import { Camera, Package, CheckCircle, Minus, Plus, RotateCcw } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Camera, Package, CheckCircle, Minus, Plus, RotateCcw, AlertCircle } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import { useToast } from "@/components/providers/ToastProvider";
+import BarcodeScanner, { normalizeBarcode } from "@/components/scanner/BarcodeScanner";
 
 type ProductRow = {
   _id: string;
@@ -19,46 +19,54 @@ export default function ScannerPage() {
   const toast = useToast();
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [productDetails, setProductDetails] = useState<ProductRow | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [manualCode, setManualCode] = useState("");
 
-  useEffect(() => {
-    if (!scanning) return;
-    const scanner = new Html5QrcodeScanner(
-      "reader",
-      { qrbox: { width: Math.min(280, window.innerWidth - 48), height: 180 }, fps: 8 },
-      false
-    );
-    scanner.render(
-      (text) => {
-        setScanResult(text);
-        scanner.clear().catch(() => {});
-        setScanning(false);
-        void fetchProduct(text);
-      },
-      () => {}
-    );
-    return () => {
-      scanner.clear().catch(() => {});
-    };
-  }, [scanning]);
+  const fetchProduct = useCallback(
+    async (rawCode: string) => {
+      const barcode = normalizeBarcode(rawCode);
+      if (!barcode) return;
 
-  const fetchProduct = async (barcode: string) => {
-    try {
-      const res = await fetch(`/api/inventory/adjust?barcode=${encodeURIComponent(barcode)}`);
-      const data = await res.json();
-      if (!data.success) {
-        setProductDetails(null);
-        toast.error("Ürün bulunamadı", data.error);
-        return;
+      setScanResult(barcode);
+      setProductDetails(null);
+      setLookupError(null);
+
+      try {
+        const params = new URLSearchParams({ barcode, sku: barcode });
+        const res = await fetch(`/api/inventory/adjust?${params.toString()}`);
+        const data = await res.json();
+        if (!data.success) {
+          setLookupError(data.error || "Ürün bulunamadı");
+          toast.error("Ürün bulunamadı", data.error);
+          return;
+        }
+        setProductDetails(data.product);
+        toast.success("Ürün bulundu", data.product.name);
+      } catch {
+        setLookupError("Bağlantı hatası");
+        toast.error("Bağlantı hatası");
       }
-      setProductDetails(data.product);
-      toast.success("Ürün bulundu", data.product.name);
-    } catch {
-      toast.error("Bağlantı hatası");
-    }
-  };
+    },
+    [toast]
+  );
+
+  const handleScan = useCallback(
+    (code: string) => {
+      setScanning(false);
+      void fetchProduct(code);
+    },
+    [fetchProduct]
+  );
+
+  const handleCameraError = useCallback(
+    (message: string) => {
+      setScanning(false);
+      toast.error("Kamera hatası", message);
+    },
+    [toast]
+  );
 
   const updateStock = async (delta: number) => {
     if (!productDetails) return;
@@ -91,8 +99,11 @@ export default function ScannerPage() {
   const resetScan = () => {
     setScanResult(null);
     setProductDetails(null);
+    setLookupError(null);
     setManualCode("");
   };
+
+  const showIdle = !scanning && !scanResult;
 
   return (
     <div className="erp-page max-w-lg mx-auto w-full">
@@ -101,7 +112,7 @@ export default function ScannerPage() {
         subtitle="Kamera veya manuel kod ile hızlı stok işlemi"
       />
 
-      {!scanning && !scanResult && (
+      {showIdle ? (
         <div className="erp-card p-5 space-y-4">
           <div className="flex flex-col items-center text-center gap-3 py-2">
             <div className="w-20 h-20 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
@@ -126,40 +137,64 @@ export default function ScannerPage() {
               placeholder="Barkod numarası"
               className="erp-input font-mono"
               inputMode="numeric"
+              autoComplete="off"
             />
             <button
               type="button"
               disabled={!manualCode.trim()}
-              onClick={() => {
-                const code = manualCode.trim();
-                setScanResult(code);
-                void fetchProduct(code);
-              }}
+              onClick={() => void fetchProduct(manualCode)}
               className="erp-btn erp-btn-secondary w-full disabled:opacity-50"
             >
               Ürünü Bul
             </button>
           </div>
         </div>
-      )}
+      ) : null}
 
-      <div
-        id="reader"
-        className={scanning ? "erp-card overflow-hidden p-2" : "hidden"}
-      />
+      <BarcodeScanner active={scanning} onScan={handleScan} onError={handleCameraError} />
 
       {scanning ? (
         <button
           type="button"
           onClick={() => setScanning(false)}
-          className="erp-btn erp-btn-ghost w-full"
+          className="erp-btn erp-btn-ghost w-full mt-3"
         >
           Taramayı İptal Et
         </button>
       ) : null}
 
-      {scanResult && productDetails && (
-        <div className="erp-card p-5 space-y-5 animate-fade-in">
+      {scanResult && lookupError && !productDetails ? (
+        <div className="erp-card p-5 space-y-4 animate-fade-in mt-3">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-xl bg-red-500/15 text-red-600">
+              <AlertCircle size={24} />
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-bold text-[var(--erp-text)]">Ürün bulunamadı</h3>
+              <p className="text-sm font-mono erp-muted truncate">{scanResult}</p>
+              <p className="text-sm text-red-600 dark:text-red-400 mt-1">{lookupError}</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button type="button" onClick={resetScan} className="erp-btn erp-btn-ghost">
+              Geri
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                resetScan();
+                setScanning(true);
+              }}
+              className="erp-btn erp-btn-primary"
+            >
+              Tekrar Tara
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {scanResult && productDetails ? (
+        <div className="erp-card p-5 space-y-5 animate-fade-in mt-3">
           <div className="flex items-center gap-3 pb-4 border-b border-[var(--erp-border)]">
             <div className="p-3 rounded-xl bg-emerald-500/15 text-emerald-600">
               <CheckCircle size={24} />
@@ -217,7 +252,7 @@ export default function ScannerPage() {
             Yeni Barkod
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
