@@ -128,28 +128,27 @@ body {
   opacity: 0.85;
 }
 
-/** Stok adedi — APK WebView'da net okunabilir rakamlar */
+/** Stok adedi — kompakt kutu, APK WebView'da rakam görünür */
 .erp-stock-input {
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  text-align: center;
+  width: 100%;
+  min-height: unset;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--erp-border);
+  background: var(--erp-surface);
   color: var(--erp-text);
   -webkit-text-fill-color: var(--erp-text);
-  background: var(--erp-surface-2);
-  border: 2px solid var(--erp-border);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  line-height: 1.25;
 }
 
 .erp-stock-input:focus {
+  outline: none;
   border-color: var(--erp-accent);
-  background: var(--erp-surface);
-}
-
-@media (max-width: 1023px) {
-  .erp-stock-input {
-    min-height: 3rem;
-    font-size: 1.25rem;
-    line-height: 1.2;
-  }
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--erp-accent) 22%, transparent);
 }
 
 .erp-btn {

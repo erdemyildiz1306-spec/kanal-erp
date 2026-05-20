@@ -3734,58 +3734,14 @@ export default function ProductsPage() {
                   Her satır bir varyant (beden / renk). Yalnızca değiştirmek
                   istediğiniz satırın stok adedini güncelleyin.
                 </p>
-
-                {/* Mobil / APK: kart düzeni — stok rakamları net */}
-                <div className="lg:hidden space-y-3">
-                  {stockVariantRows.map((row, idx) => (
-                    <div
-                      key={`m-${row.sku}-${row.barcode}-${idx}`}
-                      className="rounded-xl border border-[var(--erp-border)] bg-[var(--erp-surface-2)] p-4"
-                    >
-                      <p className="font-semibold text-[var(--erp-text)] text-base">
-                        {variantStockLabel(row)}
-                      </p>
-                      <p className="text-[11px] erp-muted font-mono mt-1 truncate">
-                        {row.sku}
-                      </p>
-                      {row.barcode ? (
-                        <p className="text-[11px] erp-muted font-mono truncate">
-                          {row.barcode}
-                        </p>
-                      ) : null}
-                      <label className="block text-xs font-semibold erp-muted mt-3 mb-1.5">
-                        Stok adedi
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        inputMode="numeric"
-                        value={row.stock}
-                        onChange={(e) =>
-                          setStockVariantRows((prev) => {
-                            const next = [...prev];
-                            next[idx] = {
-                              ...next[idx],
-                              stock: e.target.value,
-                            };
-                            return next;
-                          })
-                        }
-                        className="erp-input erp-stock-input w-full max-w-[8rem]"
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                {/* Masaüstü: tablo */}
-                <div className="hidden lg:block overflow-x-auto rounded-xl border border-[var(--erp-border)]">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto rounded-xl border border-[var(--erp-border)]">
+                  <table className="w-full text-sm min-w-[32rem]">
                     <thead className="bg-[var(--erp-surface-2)] text-left text-xs erp-muted">
                       <tr>
-                        <th className="py-2.5 px-3 font-medium">Beden / Renk</th>
+                        <th className="py-2.5 px-3 font-medium whitespace-nowrap">Beden / Renk</th>
                         <th className="py-2.5 px-3 font-medium">SKU</th>
                         <th className="py-2.5 px-3 font-medium">Barkod</th>
-                        <th className="py-2.5 px-3 font-medium w-32">Stok</th>
+                        <th className="py-2.5 px-3 font-medium w-24">Stok</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3794,7 +3750,7 @@ export default function ProductsPage() {
                           key={`${row.sku}-${row.barcode}-${idx}`}
                           className="border-t border-[var(--erp-border)]"
                         >
-                          <td className="py-2.5 px-3">
+                          <td className="py-2.5 px-3 whitespace-nowrap">
                             <span className="font-medium text-[var(--erp-text)]">
                               {variantStockLabel(row)}
                             </span>
@@ -3828,7 +3784,7 @@ export default function ProductsPage() {
                                   return next;
                                 })
                               }
-                              className="erp-input erp-stock-input w-full min-w-[5rem]"
+                              className="erp-stock-input"
                             />
                           </td>
                         </tr>
@@ -3857,7 +3813,7 @@ export default function ProductsPage() {
                   inputMode="numeric"
                   value={newStockValue}
                   onChange={(e) => setNewStockValue(e.target.value)}
-                  className="erp-input erp-stock-input w-full max-w-[10rem]"
+                  className="erp-stock-input max-w-[7rem]"
                 />
               </div>
             ))}
