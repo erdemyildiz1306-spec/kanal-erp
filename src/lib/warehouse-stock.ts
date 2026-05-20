@@ -27,6 +27,7 @@ export async function listWarehouses() {
 /** Ürün stok toplamlarını tüm depolardan yeniden hesapla */
 export async function syncProductStockFromWarehouses(productId: string) {
   await migrateOrphanVariantWarehouseRows(productId);
+  await ensureAllVariantWarehouseRows(productId);
 
   const product = await Product.findById(productId);
   if (!product) return null;
@@ -39,7 +40,10 @@ export async function syncProductStockFromWarehouses(productId: string) {
       const total = rows
         .filter((r) => String(r.variantSku ?? '') === vSku)
         .reduce((a, r) => a + Math.max(0, Number(r.stock) || 0), 0);
-      return { ...v, stock: total };
+      const prev = Math.max(0, Number(v.stock) || 0);
+      /** Depo satırı yoksa ürün dokümanındaki stoku koru (diğer varyantları sıfırlama) */
+      const stock = total > 0 || rows.some((r) => String(r.variantSku ?? '') === vSku) ? total : prev;
+      return { ...v, stock };
     });
     product.variants = variants;
     product.stock = variants.reduce(
@@ -72,6 +76,33 @@ type MatchLike = {
   matchedBarcode: string;
 };
 
+function normalizeSizeToken(s: string): string {
+  return String(s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sizeLabelMatchesProductName(sizeLabel: string, productName: string): boolean {
+  const sl = normalizeSizeToken(sizeLabel);
+  const pn = normalizeSizeToken(productName);
+  if (!sl || !pn) return false;
+  if (pn.includes(sl)) return true;
+
+  const slCore = sl.replace(/\s*yas\b/g, '').trim();
+  if (slCore && pn.includes(slCore)) return true;
+
+  const ageInLabel = sl.match(/\d+\s*[-–/]\s*\d+/);
+  if (ageInLabel) {
+    const normalized = ageInLabel[0].replace(/\s+/g, '').replace('/', '-');
+    if (pn.replace(/\s+/g, '').includes(normalized)) return true;
+  }
+
+  return false;
+}
+
 function matchVariantSkuFromOrderLine(
   variants: Array<{ sku?: string; barcode?: string; sizeLabel?: string; colorLabel?: string }>,
   line: { productName?: string; sku?: string; barcode?: string }
@@ -88,15 +119,15 @@ function matchVariantSkuFromOrderLine(
     if (hit) return String(hit.sku ?? '');
   }
 
-  const productName = String(line.productName ?? '').toLowerCase();
+  const productName = String(line.productName ?? '').trim();
   if (productName) {
     for (const v of variants) {
-      const sizeLabel = String(v.sizeLabel ?? '').trim().toLowerCase();
-      const colorLabel = String(v.colorLabel ?? '').trim().toLowerCase();
-      if (sizeLabel && productName.includes(sizeLabel)) {
+      const sizeLabel = String(v.sizeLabel ?? '').trim();
+      const colorLabel = String(v.colorLabel ?? '').trim();
+      if (sizeLabel && sizeLabelMatchesProductName(sizeLabel, productName)) {
         return String(v.sku ?? '');
       }
-      if (colorLabel && productName.includes(colorLabel)) {
+      if (colorLabel && normalizeSizeToken(productName).includes(normalizeSizeToken(colorLabel))) {
         return String(v.sku ?? '');
       }
     }
@@ -292,6 +323,36 @@ export async function repairOrphanVariantWarehouseStockBatch(
   return repaired;
 }
 
+/**
+ * Varyantlı ürünlerde eksik depo satırlarını ürün dokümanından oluşturur.
+ * Mevcut satırlara dokunmaz — yalnızca $setOnInsert.
+ */
+export async function ensureAllVariantWarehouseRows(
+  productId: string,
+  warehouseId: string = MAIN_WAREHOUSE_ID
+): Promise<void> {
+  await ensureMainWarehouse();
+  const product = await Product.findById(productId);
+  if (!product?.hasVariants || !product.variants?.length) return;
+
+  for (const v of product.variants) {
+    const variantSku = String(v.sku ?? '').trim();
+    if (!variantSku) continue;
+
+    await WarehouseStock.findOneAndUpdate(
+      { warehouseId, productId: product._id, variantSku },
+      {
+        $setOnInsert: {
+          sku: variantSku,
+          barcode: String(v.barcode ?? ''),
+          stock: Math.max(0, Number(v.stock) || 0),
+        },
+      },
+      { upsert: true }
+    );
+  }
+}
+
 export async function ensureWarehouseStockRow(
   warehouseId: string,
   match: MatchLike
@@ -341,7 +402,9 @@ export async function adjustWarehouseStock(input: {
   delta: number;
 }): Promise<number> {
   const { warehouseId, match, delta } = input;
-  await migrateOrphanVariantWarehouseRows(String(match.product._id));
+  const productId = String(match.product._id);
+  await migrateOrphanVariantWarehouseRows(productId);
+  await ensureAllVariantWarehouseRows(productId, warehouseId);
   await ensureWarehouseStockRow(warehouseId, match);
   const variantSku =
     match.variantIndex >= 0 && match.product.variants?.[match.variantIndex]

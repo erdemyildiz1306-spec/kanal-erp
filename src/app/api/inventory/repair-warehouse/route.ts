@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/auth';
 import {
   migrateOrphanVariantWarehouseRows,
   repairOrphanVariantWarehouseStockBatch,
+  ensureAllVariantWarehouseRows,
   syncProductStockFromWarehouses,
 } from '@/lib/warehouse-stock';
 import { findProductBySkuOrBarcode } from '@/lib/inventory';
@@ -20,6 +21,10 @@ export async function POST(request: Request) {
 
     if (body.all) {
       const variantProducts = await Product.find({ hasVariants: true }).select('_id').lean();
+      for (const p of variantProducts) {
+        await migrateOrphanVariantWarehouseRows(String(p._id));
+        await ensureAllVariantWarehouseRows(String(p._id));
+      }
       const repaired = await repairOrphanVariantWarehouseStockBatch(
         variantProducts.map((p) => String(p._id))
       );
@@ -44,6 +49,7 @@ export async function POST(request: Request) {
     }
 
     await migrateOrphanVariantWarehouseRows(productId);
+    await ensureAllVariantWarehouseRows(productId);
     const product = await syncProductStockFromWarehouses(productId);
     if (!product) {
       return NextResponse.json({ success: false, error: 'Ürün bulunamadı.' }, { status: 404 });

@@ -1,36 +1,96 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kanal ERP
 
-## Getting Started
+Trendyol, web mağazası ve B2B müşteri portalını tek panelden yöneten stok & sipariş ERP uygulaması.
 
-First, run the development server:
+**Canlı:** [https://erp-stok.vercel.app](https://erp-stok.vercel.app)
+
+## Özellikler
+
+| Modül | Açıklama |
+|-------|----------|
+| **Ürünler** | Tek SKU ve varyantlı ürünler, barkod, Trendyol kategori/öznitelik, kanal fiyatları |
+| **Depo** | Çoklu depo, depo bazlı stok, transfer, barkod tarayıcı |
+| **Siparişler** | Trendyol / web / perakende / B2B; etiket, işleme al, stok düşümü |
+| **Trendyol** | Ürün & sipariş senkronu, stok/fiyat push, webhook, picking bildirimi |
+| **Mağaza API** | Web sitesi stok/fiyat çekme ve webhook ile sipariş alma |
+| **Müşteri portalı** | B2B katalog, sipariş, bakiye, profil |
+| **Raporlar** | Satış, kâr, kanal dağılımı, kritik stok |
+| **Mobil APK** | Capacitor shell — canlı siteyi WebView içinde açar |
+
+## Teknoloji
+
+- **Next.js 16** (App Router) + **React 19**
+- **MongoDB** + Mongoose
+- **Tailwind CSS v4**
+- **Capacitor 7** (Android APK)
+- **Vercel** (production deploy)
+
+## Hızlı başlangıç
 
 ```bash
+git clone https://github.com/erdemyildiz1306-spec/kanal-erp.git
+cd kanal-erp
+npm install
+cp .env.example .env.local
+# .env.local içinde MONGODB_URI ve AUTH_SESSION_SECRET ayarlayın
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Uygulama varsayılan olarak [http://localhost:3005](http://localhost:3005) adresinde açılır.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+İlk kayıt olan kullanıcı otomatik **yönetici (admin)** olur.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Komutlar
 
-## Learn More
+| Komut | Açıklama |
+|-------|----------|
+| `npm run dev` | Geliştirme sunucusu (port 3005) |
+| `npm run build` | Production build |
+| `npm run start` | Production sunucusu |
+| `npm run lint` | ESLint |
 
-To learn more about Next.js, take a look at the following resources:
+Mobil APK için `mobile-shell/` klasörüne bakın → [docs/mobil-apk.md](docs/mobil-apk.md)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Dokümantasyon
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Dosya | Konu |
+|-------|------|
+| [docs/README.md](docs/README.md) | Dokümantasyon indeksi |
+| [docs/kurulum.md](docs/kurulum.md) | Yerel geliştirme ortamı |
+| [docs/deployment.md](docs/deployment.md) | Vercel production deploy |
+| [docs/ortam-degiskenleri.md](docs/ortam-degiskenleri.md) | Tüm ortam değişkenleri |
+| [docs/stok-ve-siparisler.md](docs/stok-ve-siparisler.md) | Stok düşümü, sipariş akışı, varyantlar |
+| [docs/guvenlik.md](docs/guvenlik.md) | Production güvenlik gereksinimleri |
+| [docs/mobil-apk.md](docs/mobil-apk.md) | Android APK derleme |
+| [docs/api.md](docs/api.md) | API uç noktaları özeti |
 
-## Deploy on Vercel
+## Proje yapısı
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+src/
+  app/
+    (erp)/          # Yönetici paneli sayfaları
+    portal/         # B2B müşteri portalı
+    api/            # REST API route'ları
+    login/          # Giriş
+  components/       # UI bileşenleri
+  lib/              # İş mantığı (stok, sipariş, Trendyol, auth)
+  models/           # Mongoose şemaları
+mobile-shell/       # Capacitor Android projesi
+public/             # Statik dosyalar (kanal-erp.apk)
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Production checklist
+
+Canlıya almadan önce Vercel ortam değişkenlerinde şunların tanımlı olduğundan emin olun:
+
+- `MONGODB_URI`
+- `AUTH_SESSION_SECRET`
+- `STORE_WEBHOOK_SECRET` (mağaza webhook kullanılıyorsa)
+- Ayarlar → `webApiToken` (mağaza API kullanılıyorsa)
+
+Detaylar: [docs/guvenlik.md](docs/guvenlik.md)
+
+## Lisans
+
+Private — tüm hakları saklıdır.
