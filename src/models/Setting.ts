@@ -1,0 +1,37 @@
+import mongoose from 'mongoose';
+
+const SettingSchema = new mongoose.Schema({
+  settingsId: { type: String, default: 'global', unique: true },
+
+  trendyolSellerId: { type: String, default: '' },
+  trendyolApiKey: { type: String, default: '' },
+  trendyolApiSecret: { type: String, default: '' },
+  /** Trendyol ürün yayımlama — sayısal marka ID (zorunlu create API için) */
+  trendyolBrandId: { type: Number, default: 0 },
+  trendyolBrandName: { type: String, default: '' },
+  /** pending | processing | shipped — stok düşüm eşiği */
+  trendyolStockDeductAt: { type: String, default: 'processing' },
+  /** Webhook URL son segmenti; boşsa otomatik üretilir */
+  trendyolWebhookSecret: { type: String, default: '' },
+  /** Trendyol görsel yayımlama — dışarıdan erişilebilir HTTPS taban (ör. Railway URL) */
+  publicAppUrl: { type: String, default: '' },
+
+  webApiUrl: { type: String, default: '' },
+  webApiToken: { type: String, default: '' },
+
+  storeName: { type: String, default: 'Stok ERP' },
+  printPackageContents: { type: Boolean, default: true },
+
+  /** Fatura başlığı (ERP / e-Arşiv entegrasyonu için) */
+  companyLegalTitle: { type: String, default: '' },
+  companyTaxId: { type: String, default: '' },
+  companyTaxOffice: { type: String, default: '' },
+  companyAddress: { type: String, default: '' },
+
+  /** Müşteri portalı destek iletişim */
+  portalSupportPhone: { type: String, default: '' },
+  portalSupportEmail: { type: String, default: '' },
+  portalWhatsapp: { type: String, default: '' },
+}, { timestamps: true });
+
+export default mongoose.models.Setting || mongoose.model('Setting', SettingSchema);

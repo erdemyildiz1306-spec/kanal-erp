@@ -1,0 +1,13 @@
+# Kalıcı yerel MongoDB — çalıştır: docker compose up -d
+# Sonra .env.local: MONGODB_URI=mongodb://127.0.0.1:27017/kanal-erp
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - kanal_erp_mongo_data:/data/db
+
+volumes:
+  kanal_erp_mongo_data:
