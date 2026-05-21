@@ -3750,10 +3750,26 @@ export default function ProductsPage() {
                           key={`${row.sku}-${row.barcode}-${idx}`}
                           className="border-t border-slate-100"
                         >
-                          <td className="py-2.5 px-3">
+                          <td className="py-2.5 px-3 max-w-0 w-full">
                             <span className="font-medium text-slate-800">
                               {variantStockLabel(row)}
                             </span>
+                            <div className="sm:hidden mt-1 space-y-0.5">
+                              <p
+                                className="text-[10px] font-mono text-slate-500 truncate"
+                                title={row.sku}
+                              >
+                                SKU: {row.sku}
+                              </p>
+                              {row.barcode ? (
+                                <p
+                                  className="text-[10px] font-mono text-slate-500 truncate"
+                                  title={row.barcode}
+                                >
+                                  Barkod: {row.barcode}
+                                </p>
+                              ) : null}
+                            </div>
                             {row.sizeLabel && row.colorLabel ? null : (
                               <span className="block text-[11px] text-slate-400 mt-0.5">
                                 {row.sizeLabel || row.colorLabel
