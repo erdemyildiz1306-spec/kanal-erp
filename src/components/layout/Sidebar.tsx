@@ -2,38 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  Package,
-  ShoppingCart,
-  BarChart3,
-  Settings,
-  ScanBarcode,
-  Warehouse,
-  Receipt,
-  Users,
-  ClipboardList,
-  Wallet,
-  UserCircle,
-} from "lucide-react";
-
-const menuItems = [
-  { name: "Özet", icon: LayoutDashboard, href: "/" },
-  { name: "Ürünler & Stok", icon: Package, href: "/products" },
-  { name: "Depo", icon: Warehouse, href: "/warehouse" },
-  { name: "Siparişler", icon: ShoppingCart, href: "/orders" },
-  { name: "Müşteriler", icon: UserCircle, href: "/customers" },
-  { name: "Fatura & KDV", icon: Receipt, href: "/invoices" },
-  { name: "Cari & Kasa", icon: Wallet, href: "/cari" },
-  { name: "Barkod Okuyucu", icon: ScanBarcode, href: "/scanner" },
-  { name: "Raporlar", icon: BarChart3, href: "/reports" },
-  { name: "İşlem Günlüğü", icon: ClipboardList, href: "/activity-log" },
-  { name: "Kullanıcılar", icon: Users, href: "/users" },
-  { name: "Ayarlar", icon: Settings, href: "/settings" },
-];
+import { primaryNav, secondaryNav, isNavActive } from "@/lib/navigation";
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const menuItems = [...primaryNav, ...secondaryNav];
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--erp-sidebar)] text-[#e8e4df] border-r border-[#2f3832]">
@@ -48,11 +21,9 @@ export default function Sidebar() {
       <nav className="min-h-0 flex-1 overflow-y-auto py-4 px-2">
         <ul className="space-y-0.5">
           {menuItems.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== "/" && pathname?.startsWith(item.href));
+            const active = isNavActive(pathname, item.href);
             return (
-              <li key={item.name}>
+              <li key={item.href}>
                 <Link
                   href={item.href}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13.5px] transition-colors ${
