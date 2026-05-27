@@ -10,6 +10,11 @@ import Order from '@/models/Order';
 import AdSpendEntry from '@/models/AdSpendEntry';
 import { getTrendyolAuthHeader, getTrendyolSettings } from './trendyol';
 import { TrendyolEndpoints } from './trendyol-endpoints';
+import {
+  deductionAmount,
+  isAdSpendFinanceRow,
+  isCargoFinanceRow,
+} from './trendyol-finance-classify';
 
 const MS_DAY = 86_400_000;
 const MAX_WINDOW_MS = 15 * MS_DAY;
@@ -201,15 +206,7 @@ async function applySaleFinanceToOrders(since: Date): Promise<number> {
 }
 
 function isAdSpendDescription(desc: string): boolean {
-  const d = desc.toLocaleLowerCase('tr-TR');
-  return /reklam|sponsor|mağaza reklam|ürün reklam|advert|\bads\b|kampanya reklam|performance/.test(
-    d
-  );
-}
-
-function isCargoInvoiceDescription(desc: string): boolean {
-  const d = String(desc ?? '').toLocaleLowerCase('tr-TR');
-  return /kargo\s*fatur|kargo fatura|gönderi kargo|iade kargo/.test(d);
+  return isAdSpendFinanceRow('', desc);
 }
 
 async function fetchCargoInvoiceItemsTotal(
@@ -246,14 +243,18 @@ async function enrichCargoInvoicesFromApi(
 ): Promise<number> {
   const rows = await FinancialTransaction.find({
     source: 'otherfinancial',
-    transactionType: 'DeductionInvoices',
     transactionDate: { $gte: since },
+    $or: [
+      { transactionType: /kargo/i },
+      { description: /kargo/i },
+    ],
   }).lean();
 
   let enriched = 0;
   for (const row of rows) {
+    const type = String(row.transactionType ?? '');
     const desc = String(row.description ?? '');
-    if (!isCargoInvoiceDescription(desc)) continue;
+    if (!isCargoFinanceRow(type, desc)) continue;
 
     const invoiceId = String(row.trendyolId ?? '').trim();
     if (!invoiceId) continue;
@@ -279,14 +280,14 @@ async function enrichCargoInvoicesFromApi(
 async function syncAdSpendFromFinance(since: Date): Promise<number> {
   const rows = await FinancialTransaction.find({
     source: 'otherfinancial',
-    transactionType: 'DeductionInvoices',
     transactionDate: { $gte: since },
   }).lean();
 
   let upserted = 0;
   for (const row of rows) {
     const desc = String(row.description ?? '');
-    if (!isAdSpendDescription(desc)) continue;
+    const type = String(row.transactionType ?? '');
+    if (!isAdSpendFinanceRow(type, desc)) continue;
     const trendyolId = `ad:${String(row.trendyolId)}`;
     const amount = Number(row.debt) || 0;
     if (amount <= 0) continue;

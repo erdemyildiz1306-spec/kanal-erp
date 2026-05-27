@@ -7,6 +7,14 @@ import FinancialTransaction from '@/models/FinancialTransaction';
 import AdSpendEntry from '@/models/AdSpendEntry';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
+import {
+  deductionAmount,
+  isAdSpendFinanceRow,
+  isCargoFinanceRow,
+  isNonExpenseOtherFinancial,
+  isServiceFeeFinanceRow,
+  isStopajFinanceRow,
+} from './trendyol-finance-classify';
 
 export type FinanceRange = '7g' | '30g' | 'bu-ay' | 'bu-yil';
 
@@ -49,20 +57,7 @@ function isCommissionPositiveType(t: string) {
 }
 
 function isAdSpendDescription(desc: string): boolean {
-  const d = desc.toLocaleLowerCase('tr-TR');
-  return /reklam|sponsor|mağaza reklam|ürün reklam|advert|\bads\b|kampanya reklam|performance/.test(
-    d
-  );
-}
-
-function isCargoInvoiceDescription(desc: string): boolean {
-  const d = String(desc ?? '').toLocaleLowerCase('tr-TR');
-  return /kargo\s*fatur|kargo fatura|gönderi kargo|iade kargo/.test(d);
-}
-
-function isServiceFeeDescription(desc: string): boolean {
-  const d = String(desc ?? '').toLocaleLowerCase('tr-TR');
-  return /platform|hizmet bedel|international service|ty hizmet/.test(d);
+  return isAdSpendFinanceRow('', desc);
 }
 
 function saleCommission(row: {
@@ -155,22 +150,33 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
         sellerRevenue += Number(row.sellerRevenue) || Number(row.credit) || 0;
       }
     } else if (row.source === 'otherfinancial') {
-      if (type === 'Stoppage' || type === 'E-ticaret Stopajı') {
+      if (isNonExpenseOtherFinancial(type)) {
+        continue;
+      }
+      if (isStopajFinanceRow(type)) {
         stopaj += Number(row.debt) || 0;
-      } else if (type === 'DeductionInvoices') {
-        const amt =
-          Number(row.cargoInvoiceTotal) > 0
-            ? Number(row.cargoInvoiceTotal)
-            : Number(row.debt) || 0;
-        if (isAdSpendDescription(desc)) {
+      } else {
+        const amt = deductionAmount(row);
+        if (amt <= 0) continue;
+
+        if (isAdSpendFinanceRow(type, descRaw)) {
           adSpendFromFinance += amt;
-        } else if (isCargoInvoiceDescription(descRaw)) {
+        } else if (isCargoFinanceRow(type, descRaw)) {
           cargoFee += amt;
-        } else if (isServiceFeeDescription(desc)) {
+        } else if (isServiceFeeFinanceRow(type, descRaw)) {
           serviceFee += amt;
-        } else if (desc.includes('kargo')) {
-          cargoFee += amt;
-        } else {
+        } else if (type === 'DeductionInvoices') {
+          if (isAdSpendDescription(desc)) {
+            adSpendFromFinance += amt;
+          } else if (desc.includes('kargo')) {
+            cargoFee += amt;
+          } else if (desc.includes('platform') || desc.includes('hizmet')) {
+            serviceFee += amt;
+          } else {
+            serviceFee += amt;
+          }
+        } else if (Number(row.debt) > 0) {
+          // Bilinmeyen kesinti faturası — açıklamada kargo geçmiyorsa hizmet varsay
           serviceFee += amt;
         }
       }
