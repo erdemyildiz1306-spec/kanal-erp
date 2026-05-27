@@ -42,6 +42,8 @@ const OrderSchema = new mongoose.Schema({
   /** sellerRevenue − costAmount (finans senkronu sonrası) */
   netProfitAmount: { type: Number, default: null },
   financeSyncedAt: { type: Date, default: null },
+  /** İptal/iade stok + finans iadesi işlendi (çift işlem engeli) */
+  trendyolIadeIslendi: { type: Boolean, default: false },
   
   items: [OrderItemSchema],
   
@@ -49,11 +51,18 @@ const OrderSchema = new mongoose.Schema({
   cargoCompany: { type: String, default: '' },
   packageId: { type: String, default: '' },
   cargoLabelUrl: { type: String, default: '' },
+  /** Trendyol paket meta — cargoTrackingNumber (common-label için) */
+  trendyolMeta: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
   
   platformOrderId: { type: String },
 
   /** Trendyol sync ile stok düşüldüyse true — tekrar sync'te çift düşümü önler */
   stockApplied: { type: Boolean, default: false },
+  /** Trendyol iki aşamalı stok — eşik öncesi rezerv */
+  stockReserved: { type: Boolean, default: false },
 }, { timestamps: true });
 
 OrderSchema.index({ createdAt: -1 });

@@ -397,7 +397,7 @@ export async function orderLineStockAlreadyApplied(input: {
   const hit = await StockMovement.exists({
     reference: ref,
     delta: { $lt: 0 },
-    reason: { $in: ['order', 'webhook'] },
+    reason: { $in: ['order', 'webhook', 'order_reserve'] },
     $or: or,
   });
   if (hit) return true;
@@ -413,7 +413,7 @@ export async function orderLineStockAlreadyApplied(input: {
   const byVariant = await StockMovement.exists({
     reference: ref,
     delta: { $lt: 0 },
-    reason: { $in: ['order', 'webhook'] },
+    reason: { $in: ['order', 'webhook', 'order_reserve'] },
     variantSku: vSku,
   });
   return Boolean(byVariant);

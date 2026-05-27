@@ -6,6 +6,7 @@ import Header from "@/components/layout/Header";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import MobileMoreSheet from "@/components/layout/MobileMoreSheet";
 import OrderAutoSync from "@/components/layout/OrderAutoSync";
+import OrderNotifyPoller from "@/components/layout/OrderNotifyPoller";
 
 export default function ErpShell({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -21,6 +22,7 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
           <Header />
         </div>
         <OrderAutoSync />
+        <OrderNotifyPoller />
         <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--erp-bg)] px-4 py-4 md:px-6 md:py-6 lg:p-8 safe-pb-nav print:overflow-visible print:p-0 print:pb-0">
           {children}
         </main>

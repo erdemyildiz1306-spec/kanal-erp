@@ -86,6 +86,9 @@ export const TrendyolEndpoints = {
   /** İade talepleri — getClaims */
   claims: (sellerId: string) =>
     `${TRENDYOL_ORDER_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/claims`,
+  /** Ortak kargo etiketi — common-label/query */
+  commonLabelQuery: (sellerId: string) =>
+    `${TRENDYOL_APIGW}/integration/sellers/${encodeURIComponent(sellerId)}/common-label/query`,
   /** Müşteri soruları filtre */
   customerQuestionsFilter: (sellerId: string) =>
     `${TRENDYOL_APIGW}/integration/qna/sellers/${encodeURIComponent(sellerId)}/questions/filter`,

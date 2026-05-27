@@ -8,6 +8,7 @@ import {
 } from '@/lib/inventory';
 import { logActivity } from '@/lib/activity-log';
 import { pushStockAfterOrder } from '@/lib/channel-sync';
+import { hasOrderStockReserve, restoreOrderStockReserve } from '@/lib/stock-reservation';
 
 async function orderStockFullyRestored(orderNumber: string): Promise<boolean> {
   const ref = String(orderNumber ?? '').trim();
@@ -34,6 +35,18 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
 
   const order = await Order.findOne({ orderNumber: ref }).lean();
   if (!order) return 0;
+
+  if (order.stockReserved || (await hasOrderStockReserve(ref))) {
+    const restored = await restoreOrderStockReserve(ref);
+    if (restored > 0) {
+      await logActivity({
+        action: 'stock_restore',
+        module: 'orders',
+        detail: `${ref}: ${restored} adet rezerv stok geri yüklendi`,
+      });
+    }
+    return restored;
+  }
 
   const hadDeduction =
     Boolean(order.stockApplied) || (await orderHasStockDeductions(ref));
@@ -85,7 +98,10 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
   }
 
   if (restored > 0 || (await orderStockFullyRestored(ref))) {
-    await Order.updateOne({ orderNumber: ref }, { $set: { stockApplied: false } });
+    await Order.updateOne(
+      { orderNumber: ref },
+      { $set: { stockApplied: false, trendyolIadeIslendi: true } }
+    );
     if (restored > 0) {
       await logActivity({
         action: 'stock_restore',

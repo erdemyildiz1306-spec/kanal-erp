@@ -13,6 +13,16 @@ const SettingSchema = new mongoose.Schema({
   trendyolStockDeductAt: { type: String, default: 'processing' },
   /** Webhook URL son segmenti; boşsa otomatik üretilir */
   trendyolWebhookSecret: { type: String, default: '' },
+  /** Sunucu tarafı otomatik sipariş senkronu (Vercel Cron) */
+  trendyolAutoSyncEnabled: { type: Boolean, default: true },
+  /** Otomatik senkron aralığı (dakika) */
+  trendyolAutoSyncIntervalMinutes: { type: Number, default: 2 },
+  /** Webhook sonrası poll atlama (saniye) */
+  trendyolWebhookCoalesceSeconds: { type: Number, default: 180 },
+  /** Webhook gelince kısa süre poll atla */
+  trendyolWebhookCoalesceOrders: { type: Boolean, default: true },
+  trendyolLastWebhookAt: { type: Date, default: null },
+  trendyolLastAutoSyncAt: { type: Date, default: null },
   /** Trendyol görsel yayımlama — dışarıdan erişilebilir HTTPS taban (ör. Railway URL) */
   publicAppUrl: { type: String, default: '' },
 

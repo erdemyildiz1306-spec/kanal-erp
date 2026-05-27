@@ -1,13 +1,32 @@
 import Order from '@/models/Order';
 import { findProductBySkuOrBarcode, orderHasStockDeductions } from '@/lib/inventory';
-import { applyOrderStockDeduction, statusRequiresStockDeduction } from '@/lib/order-stock';
+import {
+  applyOrderStockDeduction,
+  shouldAttemptTrendyolStockDeduction,
+} from '@/lib/order-stock';
+import {
+  applyOrderStockReserve,
+  finalizeOrderStockReserve,
+  hasOrderStockReserve,
+  isStatusBelowStockThreshold,
+  restoreOrderStockReserve,
+} from '@/lib/stock-reservation';
 import { restoreOrderStockIfApplied } from '@/lib/stock-reversal';
+import { notifyTrendyolOrderInserted } from '@/lib/order-notify';
 import {
   fetchTrendyolOrdersPaginated,
   getTrendyolSettings,
   formatTrendyolAxiosError,
 } from '@/lib/trendyol';
 import { syncTrendyolAcceptedClaims } from '@/lib/trendyol-claims';
+import {
+  coalesceTrendyolPackageFields,
+  parseTrendyolWebhookPackages,
+  resolveTrendyolPackageStatusFromPayload,
+  trendyolPackageSellerIdFromPayload,
+  tyScalarToString,
+  extractTrendyolPackageMeta,
+} from '@/lib/trendyol-package-coalesce';
 
 export function mapTrendyolPackageStatus(ty: string): string {
   const raw = String(ty ?? '').trim();
@@ -43,12 +62,17 @@ export function mapTrendyolPackageStatus(ty: string): string {
 }
 
 export async function upsertTrendyolOrderPackage(
-  item: Record<string, unknown>,
-  sellerId: string
-): Promise<{ orderNumber: string; status: string; stockApplied: boolean }> {
-  const orderNumber = String(item.orderNumber ?? '');
-  const mappedStatus = mapTrendyolPackageStatus(String(item.status ?? ''));
+  rawItem: Record<string, unknown>,
+  _sellerId: string,
+  opts?: { viaWebhook?: boolean }
+): Promise<{ orderNumber: string; status: string; stockApplied: boolean; isNew: boolean }> {
+  const item = coalesceTrendyolPackageFields(rawItem);
+  const orderNumber = tyScalarToString(item.orderNumber);
+  const tyStatus = resolveTrendyolPackageStatusFromPayload(item);
+  const mappedStatus = mapTrendyolPackageStatus(tyStatus);
   const existing = await Order.findOne({ orderNumber }).lean();
+  const prevStatus = String(existing?.status ?? '');
+  const isNew = !existing;
   const alreadyDeducted =
     Boolean((existing as { stockApplied?: boolean } | null)?.stockApplied) ||
     (existing ? await orderHasStockDeductions(orderNumber) : false);
@@ -61,7 +85,7 @@ export async function upsertTrendyolOrderPackage(
   const orderItems = [];
   for (const line of (item.lines as Array<Record<string, unknown>>) ?? []) {
     const sku = String(line.merchantSku ?? line.stockCode ?? line.sku ?? '');
-    const barcode = String(line.barcode ?? '');
+    const barcode = tyScalarToString(line.barcode);
     const match = await findProductBySkuOrBarcode(sku, barcode);
     const product = match?.product as { costPrice?: number } | undefined;
     const price = Number(line.price ?? line.lineUnitPrice) || 0;
@@ -71,7 +95,7 @@ export async function upsertTrendyolOrderPackage(
       productName: String(line.productName ?? 'Ürün'),
       sku,
       barcode,
-      lineId: line.lineId != null ? String(line.lineId) : '',
+      lineId: line.lineId != null ? tyScalarToString(line.lineId) : '',
       quantity: qty,
       unitPrice: price,
       totalPrice: Number(line.amount ?? line.lineGrossAmount) || price * qty,
@@ -81,9 +105,10 @@ export async function upsertTrendyolOrderPackage(
   }
 
   const totalAmount = Number(item.totalPrice ?? item.packageTotalPrice) || 0;
-  const packageId = String(item.id ?? item.shipmentPackageId ?? '');
+  const packageId = tyScalarToString(item.id ?? item.shipmentPackageId);
+  const trendyolMeta = extractTrendyolPackageMeta(item);
 
-  await Order.findOneAndUpdate(
+  const updated = await Order.findOneAndUpdate(
     { orderNumber },
     {
       $set: {
@@ -96,12 +121,11 @@ export async function upsertTrendyolOrderPackage(
         profitAmount: totalAmount - costAmount,
         items: orderItems,
         cargoCompany: String(item.cargoProviderName ?? ''),
-        trackingNumber: String(item.cargoTrackingNumber ?? ''),
+        trackingNumber: tyScalarToString(item.cargoTrackingNumber),
         packageId,
         platformOrderId: packageId,
-        cargoLabelUrl: sellerId
-          ? `https://api.trendyol.com/sapigw/suppliers/${encodeURIComponent(sellerId)}/shipment-packages/${packageId}/cargo-label`
-          : '',
+        trendyolMeta,
+        cargoLabelUrl: '',
       },
     },
     { upsert: true, new: true }
@@ -109,48 +133,110 @@ export async function upsertTrendyolOrderPackage(
 
   let stockApplied = alreadyDeducted;
   const settings = await getTrendyolSettings();
+  const hasReserve = await hasOrderStockReserve(orderNumber);
+  const orderLike = { orderNumber, platform: 'trendyol' as const, items: orderItems };
+
   if (
-    statusRequiresStockDeduction(mappedStatus, settings.stockDeductAt) &&
+    (mappedStatus === 'İptal Edildi' || mappedStatus === 'İade Edildi') &&
+    !Boolean(existing?.trendyolIadeIslendi)
+  ) {
+    if (hasReserve && !alreadyDeducted) {
+      await restoreOrderStockReserve(orderNumber);
+      stockApplied = false;
+    } else if (alreadyDeducted) {
+      const restored = await restoreOrderStockIfApplied(orderNumber);
+      stockApplied = restored > 0 ? false : alreadyDeducted;
+    }
+    if (mappedStatus !== prevStatus || stockApplied !== alreadyDeducted) {
+      await Order.updateOne({ orderNumber }, { $set: { trendyolIadeIslendi: true } });
+    }
+  } else if (
+    isStatusBelowStockThreshold(mappedStatus, settings.stockDeductAt) &&
     mappedStatus !== 'İptal Edildi' &&
+    mappedStatus !== 'İade Edildi' &&
+    !hasReserve &&
     !alreadyDeducted
   ) {
-    const r = await applyOrderStockDeduction({
-      orderNumber,
-      platform: 'trendyol',
-      items: orderItems,
-    });
-    stockApplied = r.applied || alreadyDeducted;
+    await applyOrderStockReserve(orderLike);
+    stockApplied = false;
   } else if (
-    (mappedStatus === 'İptal Edildi' || mappedStatus === 'İade Edildi') &&
-    alreadyDeducted
+    shouldAttemptTrendyolStockDeduction(prevStatus, mappedStatus, settings.stockDeductAt) &&
+    mappedStatus !== 'İptal Edildi' &&
+    mappedStatus !== 'İade Edildi' &&
+    !alreadyDeducted
   ) {
-    const restored = await restoreOrderStockIfApplied(orderNumber);
-    stockApplied = restored > 0 ? false : alreadyDeducted;
+    if (hasReserve) {
+      const ok = await finalizeOrderStockReserve(orderNumber);
+      stockApplied = ok || alreadyDeducted;
+    } else {
+      const r = await applyOrderStockDeduction(orderLike);
+      stockApplied = r.applied || alreadyDeducted;
+    }
   }
 
-  return { orderNumber, status: mappedStatus, stockApplied };
+  if (isNew && updated?._id) {
+    await notifyTrendyolOrderInserted(String(updated._id), item, {
+      viaWebhook: Boolean(opts?.viaWebhook),
+    });
+  }
+
+  return { orderNumber, status: mappedStatus, stockApplied, isNew };
 }
 
-export async function ingestTrendyolWebhookBody(body: unknown): Promise<number> {
+export async function ingestTrendyolWebhookBody(
+  body: unknown,
+  opts?: { expectedSellerId?: string }
+): Promise<{ count: number; rejectedSeller?: boolean }> {
   const settings = await getTrendyolSettings();
-  let packages: Array<Record<string, unknown>> = [];
-  if (Array.isArray(body)) packages = body as Array<Record<string, unknown>>;
-  else if (body && typeof body === 'object') {
-    const o = body as Record<string, unknown>;
-    if (Array.isArray(o.content)) packages = o.content as Array<Record<string, unknown>>;
-    else packages = [o];
-  }
+  const packages = parseTrendyolWebhookPackages(body).map(coalesceTrendyolPackageFields);
+
   let n = 0;
+  let rejectedSeller = false;
+
   for (const pkg of packages) {
-    if (pkg.orderNumber || pkg.id) {
-      await upsertTrendyolOrderPackage(pkg, settings.sellerId);
+    const payloadSeller = trendyolPackageSellerIdFromPayload(pkg);
+    if (
+      opts?.expectedSellerId &&
+      payloadSeller &&
+      payloadSeller !== opts.expectedSellerId
+    ) {
+      rejectedSeller = true;
+      continue;
+    }
+
+    if (pkg.orderNumber || pkg.id || pkg.shipmentPackageId) {
+      await upsertTrendyolOrderPackage(pkg, settings.sellerId, { viaWebhook: true });
       n++;
     }
   }
-  return n;
+  return { count: n, rejectedSeller };
 }
 
 const TERMINAL_TY_STATUSES = ['Cancelled', 'Returned', 'UnSupplied', 'UnDelivered'] as const;
+const MAX_MAIN_PAGES = 100;
+
+async function fetchAllMainTrendyolOrders(
+  sellerId: string,
+  apiKey: string,
+  apiSecret: string
+): Promise<Array<Record<string, unknown>>> {
+  const all: Array<Record<string, unknown>> = [];
+  let page = 0;
+  let totalPages = 1;
+
+  while (page < totalPages && page < MAX_MAIN_PAGES) {
+    const res = await fetchTrendyolOrdersPaginated(sellerId, apiKey, apiSecret, {
+      page,
+      size: 200,
+    });
+    totalPages = Math.max(1, Number(res.totalPages) || 1);
+    const list = res.content ?? [];
+    all.push(...list);
+    page++;
+    if (list.length === 0) break;
+  }
+  return all;
+}
 
 async function syncTerminalTrendyolPackages(
   sellerId: string,
@@ -165,12 +251,12 @@ async function syncTerminalTrendyolPackages(
     let page = 0;
     let totalPages = 1;
     while (page < totalPages && page < 20) {
-      const res = await fetchTrendyolOrdersPaginated(
-        sellerId,
-        apiKey,
-        apiSecret,
-        { status, startDate, page, size: 200 }
-      );
+      const res = await fetchTrendyolOrdersPaginated(sellerId, apiKey, apiSecret, {
+        status,
+        startDate,
+        page,
+        size: 200,
+      });
       totalPages = Math.max(1, Number(res.totalPages) || 1);
       const list = res.content ?? [];
       for (const item of list) {
@@ -185,7 +271,7 @@ async function syncTerminalTrendyolPackages(
   return { synced };
 }
 
-/** Tam Trendyol sipariş senkronu — ana liste + terminal durumlar + claims */
+/** Tam Trendyol sipariş senkronu — ana liste (paginated) + terminal + claims */
 export async function runTrendyolOrderSync(opts?: {
   preloadedOrders?: Array<Record<string, unknown>>;
   skipTerminal?: boolean;
@@ -196,18 +282,19 @@ export async function runTrendyolOrderSync(opts?: {
   stockRestored: number;
   claimsReturned: number;
   terminalSynced: number;
+  pagesFetched: number;
 }> {
   const settings = await getTrendyolSettings();
   let ordersList = opts?.preloadedOrders ?? [];
+  let pagesFetched = opts?.preloadedOrders ? 1 : 0;
 
   if (!ordersList.length) {
-    const res = await fetchTrendyolOrdersPaginated(
+    ordersList = await fetchAllMainTrendyolOrders(
       settings.sellerId,
       settings.apiKey,
-      settings.apiSecret,
-      { page: 0, size: 200 }
+      settings.apiSecret
     );
-    ordersList = res.content ?? [];
+    pagesFetched = Math.ceil(ordersList.length / 200) || 1;
   }
 
   let syncedCount = 0;
@@ -272,5 +359,6 @@ export async function runTrendyolOrderSync(opts?: {
     stockRestored,
     claimsReturned,
     terminalSynced,
+    pagesFetched,
   };
 }

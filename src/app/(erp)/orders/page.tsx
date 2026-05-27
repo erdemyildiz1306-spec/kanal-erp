@@ -2,11 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Search, Filter, Printer, Eye, DownloadCloud, CheckCircle, RefreshCw, DollarSign, ListChecks, RotateCcw, XCircle, Package } from "lucide-react";
+import { Search, Filter, Printer, Eye, DownloadCloud, CheckCircle, RefreshCw, DollarSign, ListChecks, RotateCcw, XCircle, Package, Tag } from "lucide-react";
 import PrintableLabel from "@/components/orders/PrintableLabel";
 import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { turkishTextIncludes } from "@/lib/search-text";
+import {
+  trendyolRefundActions,
+  orderStockStatusLabel,
+} from "@/lib/order-refund-rules";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -45,6 +49,7 @@ export default function OrdersPage() {
     packageId: "",
   });
   const [cargoSaving, setCargoSaving] = useState(false);
+  const [tyLabelLoading, setTyLabelLoading] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -156,6 +161,37 @@ export default function OrdersPage() {
       fetchOrders();
     } catch {
       alert("Etiket işlemi sırasında bağlantı hatası.");
+    }
+  };
+
+  const handleTrendyolCargoLabel = async (order: { _id: string; platform?: string }) => {
+    if (order.platform !== "trendyol") return;
+    setTyLabelLoading(true);
+    try {
+      const res = await fetch(`/api/trendyol/orders/${order._id}/cargo-label`);
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || "Trendyol ortak etiket alınamadı.");
+        return;
+      }
+      if (data.pdfUrl && /^https?:\/\//i.test(data.pdfUrl)) {
+        window.open(data.pdfUrl, "_blank", "noopener,noreferrer");
+      } else if (data.zpl) {
+        const blob = new Blob([data.zpl], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `trendyol-${order._id}.zpl`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else if (data.raw) {
+        alert("Etiket alındı; yazıcı formatını kontrol edin.");
+      }
+      fetchOrders();
+    } catch {
+      alert("Trendyol etiket isteği başarısız.");
+    } finally {
+      setTyLabelLoading(false);
     }
   };
 
@@ -612,6 +648,17 @@ export default function OrdersPage() {
                         >
                           <Eye size={18} />
                         </button>
+                        {order.platform === "trendyol" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleTrendyolCargoLabel(order)}
+                            disabled={tyLabelLoading}
+                            className="p-2 text-slate-500 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors border border-transparent hover:border-orange-100 disabled:opacity-50"
+                            title="Trendyol ortak kargo etiketi (PDF/ZPL)"
+                          >
+                            <Tag size={18} />
+                          </button>
+                        ) : null}
                         <button 
                           onClick={() => handlePrint(order)}
                           className="p-2 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors border border-transparent hover:border-orange-100" title="Etiket Yazdır (işleme al + stok düş)"
@@ -640,6 +687,19 @@ export default function OrdersPage() {
         footer={
           <div className="flex flex-wrap justify-between items-center gap-3">
             <div className="flex flex-wrap gap-2">
+              {selectedOrder?.platform === "trendyol" &&
+              selectedOrder?.status !== "İptal Edildi" &&
+              selectedOrder?.status !== "İade Edildi" ? (
+                <button
+                  type="button"
+                  onClick={() => void handleTrendyolCargoLabel(selectedOrder)}
+                  disabled={tyLabelLoading}
+                  className="px-3 py-1.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-lg text-xs font-semibold hover:bg-orange-100 disabled:opacity-50 inline-flex items-center gap-1"
+                >
+                  <Tag size={14} />
+                  {tyLabelLoading ? "Etiket…" : "Trendyol Etiket"}
+                </button>
+              ) : null}
               {selectedOrder?.status !== "İptal Edildi" &&
               selectedOrder?.status !== "İade Edildi" ? (
                 <>
@@ -675,29 +735,35 @@ export default function OrdersPage() {
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
-              {selectedOrder?.status !== "İptal Edildi" &&
-                selectedOrder?.status !== "İade Edildi" && (
+              {selectedOrder ? (() => {
+                const refund = trendyolRefundActions(selectedOrder);
+                return (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => requestStatusChange("İptal Edildi")}
-                      disabled={statusUpdating}
-                      className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-semibold hover:bg-red-100 disabled:opacity-50 inline-flex items-center gap-1"
-                    >
-                      <XCircle size={14} />
-                      İptal + Stok İadesi
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => requestStatusChange("İade Edildi")}
-                      disabled={statusUpdating}
-                      className="px-3 py-1.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-lg text-xs font-semibold hover:bg-orange-100 disabled:opacity-50 inline-flex items-center gap-1"
-                    >
-                      <RotateCcw size={14} />
-                      İade + Stok İadesi
-                    </button>
+                    {refund.canCancel ? (
+                      <button
+                        type="button"
+                        onClick={() => requestStatusChange("İptal Edildi")}
+                        disabled={statusUpdating}
+                        className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-semibold hover:bg-red-100 disabled:opacity-50 inline-flex items-center gap-1"
+                      >
+                        <XCircle size={14} />
+                        İptal + Stok İadesi
+                      </button>
+                    ) : null}
+                    {refund.canReturn ? (
+                      <button
+                        type="button"
+                        onClick={() => requestStatusChange("İade Edildi")}
+                        disabled={statusUpdating}
+                        className="px-3 py-1.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-lg text-xs font-semibold hover:bg-orange-100 disabled:opacity-50 inline-flex items-center gap-1"
+                      >
+                        <RotateCcw size={14} />
+                        İade + Stok İadesi
+                      </button>
+                    ) : null}
                   </>
-                )}
+                );
+              })() : null}
               <button
                 type="button"
                 onClick={() => setIsViewModalOpen(false)}
@@ -724,9 +790,9 @@ export default function OrdersPage() {
               </div>
               <div className="bg-slate-50 rounded-xl p-3">
                 <p className="text-xs text-slate-500">Stok</p>
-                <p className="font-semibold flex items-center gap-1">
+                <p className={`font-semibold flex items-center gap-1 ${orderStockStatusLabel(selectedOrder).cls}`}>
                   <Package size={14} />
-                  {selectedOrder.stockApplied ? "Düşüldü" : "Düşülmedi"}
+                  {orderStockStatusLabel(selectedOrder).label}
                 </p>
               </div>
               <div className="bg-slate-50 rounded-xl p-3">

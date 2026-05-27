@@ -218,6 +218,9 @@ export default function ProductsPage() {
   const [sizePresetKind, setSizePresetKind] = useState<SizePresetKind>("kids");
   const [bulkVariantStock, setBulkVariantStock] = useState("");
   const [variantBuilderOpen, setVariantBuilderOpen] = useState(true);
+  const [variantTemplates, setVariantTemplates] = useState<
+    Array<{ name: string; values: string[] }>
+  >([]);
   const [tyAttrLoading, setTyAttrLoading] = useState(false);
   const [tyAttrValues, setTyAttrValues] = useState<
     Record<number, TyAttributeFormValue>
@@ -373,12 +376,19 @@ export default function ProductsPage() {
       .slice(0, 100);
   }, [categoryLeaves, categorySearch]);
 
-  const variantColorOptions = useMemo(() => [...PRESET_VARIANT_COLORS], []);
+  const variantColorOptions = useMemo(() => {
+    const extra = variantTemplates.flatMap((t) =>
+      /renk|color/i.test(t.name) ? t.values : []
+    );
+    return [...new Set([...PRESET_VARIANT_COLORS, ...extra])];
+  }, [variantTemplates]);
 
-  const variantSizeOptions = useMemo(
-    () => [...presetSizesForKind(sizePresetKind)],
-    [sizePresetKind]
-  );
+  const variantSizeOptions = useMemo(() => {
+    const extra = variantTemplates.flatMap((t) =>
+      /beden|yaş|numara|size|ay/i.test(t.name) ? t.values : []
+    );
+    return [...new Set([...presetSizesForKind(sizePresetKind), ...extra])];
+  }, [sizePresetKind, variantTemplates]);
 
   const productLevelTyFields = useMemo(
     () => fieldsForProductLevel(tyAttrFields, productData.hasVariants),
@@ -487,6 +497,12 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    void fetch("/api/trendyol/variant-templates")
+      .then((r) => r.json())
+      .then((d: { success?: boolean; templates?: Array<{ name: string; values: string[] }> }) => {
+        if (d.success && Array.isArray(d.templates)) setVariantTemplates(d.templates);
+      })
+      .catch(() => {});
     void fetch("/api/settings?t=" + Date.now(), { cache: "no-store" })
       .then((r) => r.json())
       .then((d: { success?: boolean; settings?: { publicAppUrl?: string } }) => {

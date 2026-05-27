@@ -5,6 +5,10 @@ import {
 } from '@/lib/inventory';
 import { pushStockAfterOrder } from '@/lib/channel-sync';
 import {
+  finalizeOrderStockReserve,
+  hasOrderStockReserve,
+} from '@/lib/stock-reservation';
+import {
   getTrendyolSettings,
   updateTrendyolPackageStatus,
   formatTrendyolAxiosError,
@@ -41,11 +45,51 @@ export function statusRequiresStockDeduction(
   return statusesForStockDeductAt(stockDeductAt).has(status);
 }
 
+const STATUS_RANK: Record<string, number> = {
+  Beklemede: 10,
+  Hazırlanıyor: 20,
+  Kargolandı: 30,
+  'Teslim Edildi': 40,
+};
+
+const THRESHOLD_RANK: Record<string, number> = {
+  pending: 10,
+  processing: 20,
+  shipped: 30,
+  delivered: 40,
+};
+
+function orderStatusRank(status: string): number {
+  return STATUS_RANK[status] ?? -1;
+}
+
+function deductThresholdRank(stockDeductAt: string): number {
+  return THRESHOLD_RANK[stockDeductAt as TrendyolStockDeductAt] ?? 20;
+}
+
+export { orderStatusRank, deductThresholdRank };
+
+/** Eşik geçildi veya barkod sonradan eşleştiğinde stok düşümü tekrar dene. */
+export function shouldAttemptTrendyolStockDeduction(
+  prevStatus: string,
+  newStatus: string,
+  stockDeductAt: string = 'processing'
+): boolean {
+  const nr = orderStatusRank(newStatus);
+  const pr = orderStatusRank(prevStatus);
+  if (nr < 0 || pr < 0) return false;
+  const tr = deductThresholdRank(stockDeductAt);
+  if (nr < tr) return false;
+  if (pr < tr && nr >= tr) return true;
+  return pr >= tr && nr >= tr;
+}
+
 type OrderLike = {
   orderNumber: string;
   platform?: string;
   status?: string;
   stockApplied?: boolean;
+  stockReserved?: boolean;
   packageId?: string;
   items?: Array<{
     sku?: string;
@@ -176,12 +220,22 @@ export async function processOrderForFulfillment(
     }
   }
 
-  const stock = await applyOrderStockDeduction(order, opts);
-  const stockApplied = stock.applied || Boolean(order.stockApplied);
+  let stockApplied = Boolean(order.stockApplied);
+  const reserved =
+    Boolean(order.stockReserved) ||
+    (await hasOrderStockReserve(order.orderNumber));
+
+  if (reserved) {
+    const finalized = await finalizeOrderStockReserve(order.orderNumber);
+    stockApplied = finalized || stockApplied;
+  } else {
+    const stock = await applyOrderStockDeduction(order, opts);
+    stockApplied = stock.applied || stockApplied;
+  }
 
   await Order.updateOne(
     { orderNumber: order.orderNumber },
-    { $set: { status: 'Hazırlanıyor', stockApplied } }
+    { $set: { status: 'Hazırlanıyor', stockApplied, stockReserved: false } }
   );
 
   return {

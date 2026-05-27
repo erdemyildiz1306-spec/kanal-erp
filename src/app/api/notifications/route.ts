@@ -3,9 +3,10 @@ import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
 import NotificationState from '@/models/NotificationState';
+import OrderEvent from '@/models/OrderEvent';
 import { getSessionFromRequest } from '@/lib/auth';
 
-type NotifKind = 'order' | 'stock' | 'info';
+type NotifKind = 'order' | 'stock' | 'info' | 'order-event';
 
 async function buildNotificationItems() {
   const since = new Date(Date.now() - 48 * 60 * 60 * 1000);
@@ -19,6 +20,14 @@ async function buildNotificationItems() {
     $expr: { $lte: ['$stock', { $ifNull: ['$safetyStock', 2] }] },
   });
 
+  const recentEvents = await OrderEvent.find({
+    type: 'order-created',
+    createdAt: { $gte: since },
+  })
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .lean();
+
   const items: Array<{
     id: string;
     title: string;
@@ -26,7 +35,20 @@ async function buildNotificationItems() {
     time: string;
     kind: NotifKind;
     fingerprint: string;
+    url?: string;
   }> = [];
+
+  for (const ev of recentEvents) {
+    items.push({
+      id: `event-${String(ev._id)}`,
+      title: String(ev.title ?? 'Yeni sipariş'),
+      detail: String(ev.body ?? ''),
+      time: 'Az önce',
+      kind: 'order-event',
+      fingerprint: String(ev._id),
+      url: String(ev.url ?? ''),
+    });
+  }
 
   if (pendingOrders > 0) {
     items.push({
@@ -83,7 +105,9 @@ function applyUserState(
     (typeof items)[number] & { read: boolean }
   >;
 
-  const unreadCount = visible.filter((i) => !i.read && i.kind !== 'info').length;
+  const unreadCount = visible.filter(
+    (i) => !i.read && i.kind !== 'info'
+  ).length;
 
   return { items: visible, unreadCount };
 }

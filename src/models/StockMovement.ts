@@ -12,6 +12,7 @@ const StockMovementSchema = new mongoose.Schema(
       type: String,
       enum: [
         'order',
+        'order_reserve',
         'webhook',
         'manual',
         'scanner',

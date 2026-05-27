@@ -10,8 +10,9 @@ type NotifItem = {
   title: string;
   detail: string;
   time: string;
-  kind: "order" | "stock" | "info";
+  kind: "order" | "stock" | "info" | "order-event";
   read?: boolean;
+  url?: string;
 };
 
 type SearchHit = {
@@ -42,6 +43,14 @@ export default function Header() {
       setUnread(Number(data.unreadCount) || 0);
       setLoadStatus("ok");
     }
+  };
+
+  const openNotif = (n: NotifItem) => {
+    if (n.url) {
+      router.push(n.url);
+      setOpen(false);
+    }
+    if (!n.read && n.kind !== "info") void markRead(n.id);
   };
 
   const markRead = async (id: string) => {
@@ -119,9 +128,11 @@ export default function Header() {
     const t = window.setInterval(() => load({ silent: true }), 60_000);
     const onSync = () => void load({ silent: true });
     window.addEventListener("erp-orders-synced", onSync);
+    window.addEventListener("erp-order-notify", onSync);
     return () => {
       window.clearInterval(t);
       window.removeEventListener("erp-orders-synced", onSync);
+      window.removeEventListener("erp-order-notify", onSync);
     };
   }, [load]);
 
@@ -329,7 +340,9 @@ export default function Header() {
                         key={n.id}
                         className={`px-4 py-3 border-b border-[var(--erp-border)] text-sm ${
                           n.read ? "opacity-80" : "bg-[var(--erp-surface-2)]"
-                        }`}
+                        } ${n.url ? "cursor-pointer hover:bg-[var(--erp-surface-2)]" : ""}`}
+                        onClick={n.url ? () => openNotif(n) : undefined}
+                        role={n.url ? "button" : undefined}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">

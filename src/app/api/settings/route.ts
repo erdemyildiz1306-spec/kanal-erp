@@ -161,6 +161,24 @@ export async function PUT(request: Request) {
       const v = String(data.trendyolStockDeductAt ?? 'processing').trim();
       doc.set('trendyolStockDeductAt', v || 'processing');
     }
+    if (data.trendyolAutoSyncEnabled !== undefined) {
+      doc.set('trendyolAutoSyncEnabled', Boolean(data.trendyolAutoSyncEnabled));
+    }
+    if (data.trendyolAutoSyncIntervalMinutes !== undefined) {
+      const n = Number(data.trendyolAutoSyncIntervalMinutes);
+      if (Number.isFinite(n) && n >= 1) {
+        doc.set('trendyolAutoSyncIntervalMinutes', Math.min(Math.floor(n), 60));
+      }
+    }
+    if (data.trendyolWebhookCoalesceOrders !== undefined) {
+      doc.set('trendyolWebhookCoalesceOrders', Boolean(data.trendyolWebhookCoalesceOrders));
+    }
+    if (data.trendyolWebhookCoalesceSeconds !== undefined) {
+      const n = Number(data.trendyolWebhookCoalesceSeconds);
+      if (Number.isFinite(n) && n >= 30) {
+        doc.set('trendyolWebhookCoalesceSeconds', Math.min(Math.floor(n), 600));
+      }
+    }
     if (data.trendyolWebhookSecret !== undefined) {
       const ws = String(data.trendyolWebhookSecret ?? '').trim();
       if (ws) doc.set('trendyolWebhookSecret', ws);

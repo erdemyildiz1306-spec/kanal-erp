@@ -13,6 +13,7 @@ import {
   notifyTrendyolOrderPicking,
   statusRequiresStockDeduction,
 } from '@/lib/order-stock';
+import { validateTrendyolRefund } from '@/lib/order-refund-rules';
 import { restoreOrderStockIfApplied } from '@/lib/stock-reversal';
 import { logActivity } from '@/lib/activity-log';
 
@@ -148,6 +149,17 @@ export async function PUT(request: Request) {
     const prevStatus = order.status;
     const newStatus = data.status ? String(data.status) : prevStatus;
 
+    const refundCheck = validateTrendyolRefund({
+      platform: order.platform,
+      prevStatus,
+      newStatus,
+      stockApplied: Boolean(order.stockApplied),
+      trendyolIadeIslendi: Boolean(order.trendyolIadeIslendi),
+    });
+    if (!refundCheck.ok) {
+      return NextResponse.json({ success: false, error: refundCheck.error }, { status: 400 });
+    }
+
     if (
       newStatus === 'Hazırlanıyor' &&
       prevStatus !== 'Hazırlanıyor' &&
@@ -184,9 +196,12 @@ export async function PUT(request: Request) {
         stockRestored = await restoreOrderStockIfApplied(order.orderNumber);
         if (stockRestored > 0) {
           order.stockApplied = false;
+          order.trendyolIadeIslendi = true;
         } else {
           stockRestoreSkipped = true;
         }
+      } else if (newStatus === 'İptal Edildi' || newStatus === 'İade Edildi') {
+        order.trendyolIadeIslendi = true;
       }
     }
 

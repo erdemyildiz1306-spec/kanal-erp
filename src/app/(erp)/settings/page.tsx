@@ -26,6 +26,10 @@ type SettingsPayload = {
   trendyolBrandName?: string;
   trendyolStockDeductAt?: string;
   trendyolWebhookSecret?: string;
+  trendyolAutoSyncEnabled?: boolean;
+  trendyolAutoSyncIntervalMinutes?: number;
+  trendyolWebhookCoalesceOrders?: boolean;
+  trendyolWebhookCoalesceSeconds?: number;
   publicAppUrl?: string;
   webApiToken?: string;
   storeName?: string;
@@ -61,6 +65,10 @@ function emptyIntegrationDefaults(): SettingsPayload {
     trendyolBrandName: "",
     trendyolStockDeductAt: "processing",
     trendyolWebhookSecret: "",
+    trendyolAutoSyncEnabled: true,
+    trendyolAutoSyncIntervalMinutes: 2,
+    trendyolWebhookCoalesceOrders: true,
+    trendyolWebhookCoalesceSeconds: 180,
     publicAppUrl: "",
     storeName: "",
     printPackageContents: true,
@@ -168,6 +176,8 @@ export default function SettingsPage() {
   const [mobileOpenTab, setMobileOpenTab] = useState<string | null>("general");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [tyVarImportCatId, setTyVarImportCatId] = useState("");
+  const [tyVarImportSaving, setTyVarImportSaving] = useState(false);
 
   const [hints, setHints] = useState<IntegrationHints>({
     trendyolSellerIdSaved: false,
@@ -273,6 +283,16 @@ export default function SettingsPage() {
           (s.trendyolWebhookSecret as string) ||
           cached.trendyolWebhookSecret ||
           "",
+        trendyolAutoSyncEnabled: s.trendyolAutoSyncEnabled !== false,
+        trendyolAutoSyncIntervalMinutes:
+          Number(s.trendyolAutoSyncIntervalMinutes) > 0
+            ? Number(s.trendyolAutoSyncIntervalMinutes)
+            : 2,
+        trendyolWebhookCoalesceOrders: s.trendyolWebhookCoalesceOrders !== false,
+        trendyolWebhookCoalesceSeconds:
+          Number(s.trendyolWebhookCoalesceSeconds) >= 30
+            ? Number(s.trendyolWebhookCoalesceSeconds)
+            : 180,
         publicAppUrl:
           (s.publicAppUrl as string) || cached.publicAppUrl || "",
       };
@@ -365,6 +385,15 @@ export default function SettingsPage() {
         payload.trendyolStockDeductAt = integration.trendyolStockDeductAt.trim();
       if (integration.trendyolWebhookSecret?.trim())
         payload.trendyolWebhookSecret = integration.trendyolWebhookSecret.trim();
+      payload.trendyolAutoSyncEnabled = integration.trendyolAutoSyncEnabled !== false;
+      if (integration.trendyolAutoSyncIntervalMinutes != null) {
+        payload.trendyolAutoSyncIntervalMinutes = integration.trendyolAutoSyncIntervalMinutes;
+      }
+      payload.trendyolWebhookCoalesceOrders =
+        integration.trendyolWebhookCoalesceOrders !== false;
+      if (integration.trendyolWebhookCoalesceSeconds != null) {
+        payload.trendyolWebhookCoalesceSeconds = integration.trendyolWebhookCoalesceSeconds;
+      }
       if (integration.publicAppUrl?.trim())
         payload.publicAppUrl = integration.publicAppUrl.trim();
 
@@ -885,6 +914,137 @@ export default function SettingsPage() {
                   <option value="processing">Hazırlanıyor (etiket / işleme al)</option>
                   <option value="shipped">Kargolandı</option>
                 </select>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-4">
+                <div>
+                  <h4 className="font-semibold text-slate-900 text-sm">Otomatik senkron (sunucu)</h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Vercel Cron ile tarayıcı kapalıyken sipariş + finans çekilir. Tarayıcıdaki 90 sn
+                    poll yedek olarak çalışmaya devam eder.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={integration.trendyolAutoSyncEnabled !== false}
+                    onChange={(e) =>
+                      setIntegration({
+                        ...integration,
+                        trendyolAutoSyncEnabled: e.target.checked,
+                      })
+                    }
+                  />
+                  Sunucu otomatik senkron açık
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Senkron aralığı (dk)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={integration.trendyolAutoSyncIntervalMinutes ?? 2}
+                      onChange={(e) =>
+                        setIntegration({
+                          ...integration,
+                          trendyolAutoSyncIntervalMinutes: Number(e.target.value) || 2,
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Webhook coalesce (sn)
+                    </label>
+                    <input
+                      type="number"
+                      min={30}
+                      max={600}
+                      value={integration.trendyolWebhookCoalesceSeconds ?? 180}
+                      onChange={(e) =>
+                        setIntegration({
+                          ...integration,
+                          trendyolWebhookCoalesceSeconds: Number(e.target.value) || 180,
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={integration.trendyolWebhookCoalesceOrders !== false}
+                    onChange={(e) =>
+                      setIntegration({
+                        ...integration,
+                        trendyolWebhookCoalesceOrders: e.target.checked,
+                      })
+                    }
+                  />
+                  Webhook sonrası kısa süre poll atla (çift API yükünü azaltır)
+                </label>
+              </div>
+
+              <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 space-y-3">
+                <div>
+                  <h4 className="font-semibold text-slate-900 text-sm">Varyant şablonları (Trendyol)</h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Yaprak kategori ID&apos;sinden varianter/slicer özelliklerini içe aktarır. Ürün
+                    varyant oluşturucusunda hazır liste olarak kullanılır.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={tyVarImportCatId}
+                    onChange={(e) => setTyVarImportCatId(e.target.value)}
+                    placeholder="Trendyol categoryId (yaprak)"
+                    className="flex-1 px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={tyVarImportSaving}
+                    onClick={async () => {
+                      const cid = Number(tyVarImportCatId);
+                      if (!Number.isFinite(cid) || cid <= 0) {
+                        toast.error("Geçerli Trendyol categoryId girin.");
+                        return;
+                      }
+                      setTyVarImportSaving(true);
+                      try {
+                        const res = await fetch("/api/trendyol/variant-templates", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ categoryId: cid }),
+                        });
+                        const data = await res.json();
+                        if (!data.success) {
+                          toast.error(data.error || "İçe aktarma başarısız.");
+                          return;
+                        }
+                        const n = Array.isArray(data.created) ? data.created.length : 0;
+                        if (n === 0) {
+                          toast.error(data.hint || `Şablon oluşmadı (atlanan: ${data.skipped ?? 0}).`);
+                        } else {
+                          toast.success(`${n} varyant şablonu oluşturuldu.`);
+                        }
+                      } catch {
+                        toast.error("Bağlantı hatası.");
+                      } finally {
+                        setTyVarImportSaving(false);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700 disabled:opacity-50"
+                  >
+                    {tyVarImportSaving ? "Aktarılıyor…" : "Şablonları içe aktar"}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1.5">
