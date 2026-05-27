@@ -419,6 +419,54 @@ export async function orderLineStockAlreadyApplied(input: {
   return Boolean(byVariant);
 }
 
+/** Aynı sipariş satırı için stok iadesi daha önce yapıldıysa tekrar yüklemez. */
+export async function orderLineStockAlreadyRestored(input: {
+  reference?: string;
+  sku?: string;
+  barcode?: string;
+  productName?: string;
+}): Promise<boolean> {
+  const ref = String(input.reference ?? '').trim();
+  if (!ref) return false;
+  const restoreRef = `${ref}:restore`;
+
+  const b = String(input.barcode ?? '').trim();
+  const s = String(input.sku ?? '').trim();
+  const or: Record<string, unknown>[] = [];
+  if (b) {
+    for (const key of barcodeLookupKeys(b)) {
+      or.push({ barcode: key });
+    }
+  }
+  if (s) or.push({ variantSku: s }, { sku: s });
+
+  if (or.length === 0) return false;
+
+  const hit = await StockMovement.exists({
+    reference: restoreRef,
+    delta: { $gt: 0 },
+    reason: 'return',
+    $or: or,
+  });
+  if (hit) return true;
+
+  const raw = await findProductBySkuOrBarcode(s, b);
+  if (!raw) return false;
+  const resolved = resolveVariantMatch(raw, s, b, input.productName);
+  if (resolved.variantIndex < 0) return false;
+
+  const vSku = String(resolved.product.variants?.[resolved.variantIndex]?.sku ?? '').trim();
+  if (!vSku) return false;
+
+  const byVariant = await StockMovement.exists({
+    reference: restoreRef,
+    delta: { $gt: 0 },
+    reason: 'return',
+    variantSku: vSku,
+  });
+  return Boolean(byVariant);
+}
+
 export async function decrementForOrderItem(input: {
   sku?: string;
   barcode?: string;

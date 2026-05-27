@@ -1156,10 +1156,52 @@ export async function fetchTrendyolProducts(
 
 // Siparişleri Trendyol'dan Çek (Sipariş Paketi API)
 export async function fetchTrendyolOrders(sellerId: string, apiKey: string, apiSecret: string) {
+  const res = await fetchTrendyolOrdersPaginated(sellerId, apiKey, apiSecret, {
+    page: 0,
+    size: 200,
+  });
+  return { content: res.content, totalPages: res.totalPages, totalElements: res.totalElements };
+}
+
+export async function fetchTrendyolOrdersPaginated(
+  sellerId: string,
+  apiKey: string,
+  apiSecret: string,
+  params?: {
+    page?: number;
+    size?: number;
+    status?: string;
+    startDate?: number;
+    endDate?: number;
+  }
+): Promise<{
+  content: Array<Record<string, unknown>>;
+  totalPages?: number;
+  totalElements?: number;
+}> {
   try {
     const headers = getTrendyolAuthHeader(apiKey, apiSecret, sellerId);
-    const response = await axios.get(`${TRENDYOL_API_BASE}/suppliers/${sellerId}/orders`, { headers });
-    return response.data;
+    const query: Record<string, string | number> = {
+      page: params?.page ?? 0,
+      size: Math.min(Math.max(params?.size ?? 200, 1), 200),
+    };
+    if (params?.status) query.status = params.status;
+    if (params?.startDate != null) query.startDate = params.startDate;
+    if (params?.endDate != null) query.endDate = params.endDate;
+
+    const response = await axios.get(
+      `${TRENDYOL_API_BASE}/suppliers/${sellerId}/orders`,
+      { headers, params: query, timeout: 90_000 }
+    );
+    const data = response.data ?? {};
+    const content = Array.isArray(data.content)
+      ? (data.content as Array<Record<string, unknown>>)
+      : [];
+    return {
+      content,
+      totalPages: Number(data.totalPages) || 1,
+      totalElements: Number(data.totalElements) || content.length,
+    };
   } catch (error: unknown) {
     console.error('Trendyol sipariş çekme hatası:', error);
     throw error;

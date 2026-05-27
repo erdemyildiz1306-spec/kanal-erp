@@ -1,0 +1,303 @@
+/**
+ * Trendyol Cari Hesap Ekstresi — settlements + otherfinancials
+ * @see https://developers.trendyol.com/docs/cari-hesap-ekstresi-entegrasyonu.md
+ */
+
+import axios from 'axios';
+import connectToDatabase from './mongodb';
+import FinancialTransaction from '@/models/FinancialTransaction';
+import Order from '@/models/Order';
+import AdSpendEntry from '@/models/AdSpendEntry';
+import { getTrendyolAuthHeader, getTrendyolSettings } from './trendyol';
+import { TrendyolEndpoints } from './trendyol-endpoints';
+
+const MS_DAY = 86_400_000;
+const MAX_WINDOW_MS = 15 * MS_DAY;
+
+export const SETTLEMENT_SYNC_TYPES = [
+  'Sale',
+  'Return',
+  'Discount',
+  'Coupon',
+] as const;
+
+export const OTHER_FINANCIAL_SYNC_TYPES = [
+  'Stoppage',
+  'DeductionInvoices',
+] as const;
+
+type FinanceRow = {
+  id?: string | number;
+  transactionDate?: number;
+  barcode?: string | null;
+  transactionType?: string;
+  description?: string | null;
+  debt?: number;
+  credit?: number;
+  commissionRate?: number | null;
+  commissionAmount?: number | null;
+  sellerRevenue?: number | null;
+  orderNumber?: string | null;
+  paymentOrderId?: number | null;
+  shipmentPackageId?: number | string | null;
+};
+
+type PageResponse = {
+  content?: FinanceRow[];
+  totalPages?: number;
+};
+
+function toDate(ms: unknown): Date {
+  const n = Number(ms);
+  return Number.isFinite(n) ? new Date(n) : new Date();
+}
+
+function mapRow(
+  row: FinanceRow,
+  source: 'settlement' | 'otherfinancial'
+): Record<string, unknown> | null {
+  const trendyolId = String(row.id ?? '').trim();
+  if (!trendyolId) return null;
+  return {
+    trendyolId,
+    source,
+    transactionType: String(row.transactionType ?? ''),
+    transactionDate: toDate(row.transactionDate),
+    barcode: String(row.barcode ?? '').trim(),
+    orderNumber: String(row.orderNumber ?? '').trim(),
+    shipmentPackageId: row.shipmentPackageId != null ? String(row.shipmentPackageId) : '',
+    paymentOrderId:
+      row.paymentOrderId != null && Number.isFinite(Number(row.paymentOrderId))
+        ? Number(row.paymentOrderId)
+        : null,
+    commissionAmount: Number(row.commissionAmount) || 0,
+    commissionRate: row.commissionRate != null ? Number(row.commissionRate) : null,
+    sellerRevenue: Number(row.sellerRevenue) || 0,
+    debt: Number(row.debt) || 0,
+    credit: Number(row.credit) || 0,
+    description: String(row.description ?? '').trim(),
+  };
+}
+
+async function fetchFinancePage(
+  url: string,
+  headers: Record<string, string>,
+  params: Record<string, string | number>
+): Promise<PageResponse> {
+  const { data } = await axios.get<PageResponse>(url, {
+    headers,
+    params,
+    timeout: 90_000,
+  });
+  return data ?? {};
+}
+
+async function syncTypeWindow(
+  baseUrl: string,
+  headers: Record<string, string>,
+  source: 'settlement' | 'otherfinancial',
+  transactionType: string,
+  startMs: number,
+  endMs: number,
+  extraParams?: Record<string, string>
+): Promise<number> {
+  let page = 0;
+  let totalPages = 1;
+  let upserted = 0;
+
+  while (page < totalPages) {
+    const params: Record<string, string | number> = {
+      transactionType,
+      startDate: startMs,
+      endDate: endMs,
+      page,
+      size: 500,
+      ...extraParams,
+    };
+    const data = await fetchFinancePage(baseUrl, headers, params);
+    const rows = Array.isArray(data.content) ? data.content : [];
+    totalPages = Math.max(1, Number(data.totalPages) || 1);
+
+    for (const row of rows) {
+      const doc = mapRow(row, source);
+      if (!doc) continue;
+      await FinancialTransaction.findOneAndUpdate(
+        { trendyolId: doc.trendyolId },
+        { $set: doc },
+        { upsert: true }
+      );
+      upserted++;
+    }
+    page++;
+    if (rows.length === 0) break;
+  }
+  return upserted;
+}
+
+function dateWindows(start: Date, end: Date): Array<{ startMs: number; endMs: number }> {
+  const windows: Array<{ startMs: number; endMs: number }> = [];
+  let cursor = start.getTime();
+  const endMs = end.getTime();
+  while (cursor < endMs) {
+    const windowEnd = Math.min(cursor + MAX_WINDOW_MS, endMs);
+    windows.push({ startMs: cursor, endMs: windowEnd });
+    cursor = windowEnd + 1;
+  }
+  return windows;
+}
+
+/** Siparişlere settlement Sale verilerinden komisyon / hakediş yansıt */
+async function applySaleFinanceToOrders(since: Date): Promise<number> {
+  const sales = await FinancialTransaction.find({
+    transactionType: { $in: ['Sale', 'Satış'] },
+    transactionDate: { $gte: since },
+    orderNumber: { $ne: '' },
+  }).lean();
+
+  const byOrder = new Map<
+    string,
+    { commission: number; sellerRevenue: number; gross: number }
+  >();
+
+  for (const row of sales) {
+    const key = String(row.orderNumber);
+    const prev = byOrder.get(key) ?? { commission: 0, sellerRevenue: 0, gross: 0 };
+    prev.commission += Number(row.commissionAmount) || 0;
+    prev.sellerRevenue += Number(row.sellerRevenue) || 0;
+    prev.gross += Number(row.credit) || 0;
+    byOrder.set(key, prev);
+  }
+
+  let updated = 0;
+  for (const [orderNumber, fin] of byOrder) {
+    const order = await Order.findOne({ orderNumber }).lean();
+    if (!order) continue;
+    const cost = Number(order.costAmount) || 0;
+    const netProfit = fin.sellerRevenue - cost;
+    await Order.updateOne(
+      { orderNumber },
+      {
+        $set: {
+          trendyolCommission: fin.commission,
+          trendyolSellerRevenue: fin.sellerRevenue,
+          netProfitAmount: netProfit,
+          financeSyncedAt: new Date(),
+        },
+      }
+    );
+    updated++;
+  }
+  return updated;
+}
+
+function isAdSpendDescription(desc: string): boolean {
+  const d = desc.toLocaleLowerCase('tr-TR');
+  return /reklam|sponsor|mağaza reklam|ürün reklam|advert|\bads\b|kampanya reklam|performance/.test(
+    d
+  );
+}
+
+/** Finans ekstresindeki reklam kalemlerini AdSpendEntry olarak kaydet */
+async function syncAdSpendFromFinance(since: Date): Promise<number> {
+  const rows = await FinancialTransaction.find({
+    source: 'otherfinancial',
+    transactionType: 'DeductionInvoices',
+    transactionDate: { $gte: since },
+  }).lean();
+
+  let upserted = 0;
+  for (const row of rows) {
+    const desc = String(row.description ?? '');
+    if (!isAdSpendDescription(desc)) continue;
+    const trendyolId = `ad:${String(row.trendyolId)}`;
+    const amount = Number(row.debt) || 0;
+    if (amount <= 0) continue;
+    await AdSpendEntry.findOneAndUpdate(
+      { trendyolId },
+      {
+        $set: {
+          trendyolId,
+          spendDate: row.transactionDate,
+          amount,
+          platform: 'trendyol',
+          campaign: desc.slice(0, 120),
+          note: desc,
+          source: 'trendyol_finance',
+        },
+      },
+      { upsert: true }
+    );
+    upserted++;
+  }
+  return upserted;
+}
+
+export async function syncTrendyolFinance(opts?: {
+  daysBack?: number;
+}): Promise<{
+  upserted: number;
+  ordersUpdated: number;
+  adSpendSynced: number;
+  from: string;
+  to: string;
+}> {
+  await connectToDatabase();
+  const settings = await getTrendyolSettings();
+  const headers = getTrendyolAuthHeader(
+    settings.apiKey,
+    settings.apiSecret,
+    settings.sellerId
+  );
+
+  const daysBack = Math.min(Math.max(opts?.daysBack ?? 30, 1), 90);
+  const end = new Date();
+  const start = new Date(end.getTime() - daysBack * MS_DAY);
+  const windows = dateWindows(start, end);
+
+  let upserted = 0;
+  const settlementsUrl = TrendyolEndpoints.financeSettlements(settings.sellerId);
+  const otherUrl = TrendyolEndpoints.financeOtherFinancials(settings.sellerId);
+
+  for (const w of windows) {
+    for (const t of SETTLEMENT_SYNC_TYPES) {
+      upserted += await syncTypeWindow(
+        settlementsUrl,
+        headers,
+        'settlement',
+        t,
+        w.startMs,
+        w.endMs
+      );
+    }
+    for (const t of OTHER_FINANCIAL_SYNC_TYPES) {
+      upserted += await syncTypeWindow(
+        otherUrl,
+        headers,
+        'otherfinancial',
+        t,
+        w.startMs,
+        w.endMs
+      );
+    }
+    upserted += await syncTypeWindow(
+      otherUrl,
+      headers,
+      'otherfinancial',
+      'DeductionInvoices',
+      w.startMs,
+      w.endMs,
+      { transactionSubType: 'PlatformServiceFee' }
+    );
+  }
+
+  const ordersUpdated = await applySaleFinanceToOrders(start);
+  const adSpendSynced = await syncAdSpendFromFinance(start);
+
+  return {
+    upserted,
+    ordersUpdated,
+    adSpendSynced,
+    from: start.toISOString(),
+    to: end.toISOString(),
+  };
+}

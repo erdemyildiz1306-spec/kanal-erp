@@ -2,10 +2,25 @@ import Order from '@/models/Order';
 import { findProductBySkuOrBarcode, orderHasStockDeductions } from '@/lib/inventory';
 import { applyOrderStockDeduction, statusRequiresStockDeduction } from '@/lib/order-stock';
 import { restoreOrderStockIfApplied } from '@/lib/stock-reversal';
-import { getTrendyolSettings } from '@/lib/trendyol';
+import {
+  fetchTrendyolOrdersPaginated,
+  getTrendyolSettings,
+  formatTrendyolAxiosError,
+} from '@/lib/trendyol';
+import { syncTrendyolAcceptedClaims } from '@/lib/trendyol-claims';
 
 export function mapTrendyolPackageStatus(ty: string): string {
-  switch (String(ty ?? '')) {
+  const raw = String(ty ?? '').trim();
+  const s = raw.toLowerCase();
+
+  if (/cancel|unsupplied|iptal|un.?supplied/.test(s)) return 'İptal Edildi';
+  if (/return|iade|claim.?accept|undelivered/.test(s)) return 'İade Edildi';
+  if (/deliver/.test(s)) return 'Teslim Edildi';
+  if (/ship/.test(s)) return 'Kargolandı';
+  if (/pick|invoice|await|process|hazir/.test(s)) return 'Hazırlanıyor';
+  if (/creat|new|bekle/.test(s)) return 'Beklemede';
+
+  switch (raw) {
     case 'Created':
       return 'Beklemede';
     case 'Awaiting':
@@ -20,6 +35,7 @@ export function mapTrendyolPackageStatus(ty: string): string {
     case 'UnSupplied':
       return 'İptal Edildi';
     case 'Returned':
+    case 'UnDelivered':
       return 'İade Edildi';
     default:
       return 'Beklemede';
@@ -132,4 +148,129 @@ export async function ingestTrendyolWebhookBody(body: unknown): Promise<number> 
     }
   }
   return n;
+}
+
+const TERMINAL_TY_STATUSES = ['Cancelled', 'Returned', 'UnSupplied', 'UnDelivered'] as const;
+
+async function syncTerminalTrendyolPackages(
+  sellerId: string,
+  apiKey: string,
+  apiSecret: string,
+  daysBack = 30
+): Promise<{ synced: number }> {
+  const startDate = Date.now() - daysBack * 86_400_000;
+  let synced = 0;
+
+  for (const status of TERMINAL_TY_STATUSES) {
+    let page = 0;
+    let totalPages = 1;
+    while (page < totalPages && page < 20) {
+      const res = await fetchTrendyolOrdersPaginated(
+        sellerId,
+        apiKey,
+        apiSecret,
+        { status, startDate, page, size: 200 }
+      );
+      totalPages = Math.max(1, Number(res.totalPages) || 1);
+      const list = res.content ?? [];
+      for (const item of list) {
+        await upsertTrendyolOrderPackage(item, sellerId);
+        synced++;
+      }
+      page++;
+      if (list.length === 0) break;
+    }
+  }
+
+  return { synced };
+}
+
+/** Tam Trendyol sipariş senkronu — ana liste + terminal durumlar + claims */
+export async function runTrendyolOrderSync(opts?: {
+  preloadedOrders?: Array<Record<string, unknown>>;
+  skipTerminal?: boolean;
+  skipClaims?: boolean;
+}): Promise<{
+  syncedCount: number;
+  stockAdjusted: number;
+  stockRestored: number;
+  claimsReturned: number;
+  terminalSynced: number;
+}> {
+  const settings = await getTrendyolSettings();
+  let ordersList = opts?.preloadedOrders ?? [];
+
+  if (!ordersList.length) {
+    const res = await fetchTrendyolOrdersPaginated(
+      settings.sellerId,
+      settings.apiKey,
+      settings.apiSecret,
+      { page: 0, size: 200 }
+    );
+    ordersList = res.content ?? [];
+  }
+
+  let syncedCount = 0;
+  let stockAdjusted = 0;
+  let stockRestored = 0;
+
+  for (const item of ordersList) {
+    const before = await Order.findOne({
+      orderNumber: String(item.orderNumber ?? ''),
+    })
+      .select('stockApplied')
+      .lean();
+    const wasDeducted = Boolean(before?.stockApplied);
+
+    const r = await upsertTrendyolOrderPackage(item, settings.sellerId);
+    syncedCount++;
+
+    if (r.stockApplied && !wasDeducted) stockAdjusted++;
+    if (
+      (r.status === 'İptal Edildi' || r.status === 'İade Edildi') &&
+      wasDeducted &&
+      !r.stockApplied
+    ) {
+      stockRestored++;
+    }
+  }
+
+  let terminalSynced = 0;
+  if (!opts?.skipTerminal) {
+    try {
+      const terminal = await syncTerminalTrendyolPackages(
+        settings.sellerId,
+        settings.apiKey,
+        settings.apiSecret
+      );
+      terminalSynced = terminal.synced;
+    } catch (e: unknown) {
+      console.warn(
+        '[Trendyol] Terminal durum senkronu:',
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
+
+  let claimsReturned = 0;
+  if (!opts?.skipClaims) {
+    try {
+      const claims = await syncTrendyolAcceptedClaims({ daysBack: 30 });
+      claimsReturned = claims.returned;
+      stockRestored += claims.returned;
+    } catch (e: unknown) {
+      console.warn(
+        '[Trendyol] Claims senkronu:',
+        formatTrendyolAxiosError(e) || (e instanceof Error ? e.message : e)
+      );
+    }
+  }
+
+  return {
+    syncedCount,
+    stockAdjusted,
+    stockRestored,
+    claimsReturned,
+    terminalSynced,
+  };
 }

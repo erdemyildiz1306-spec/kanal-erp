@@ -1,30 +1,23 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
-import Order from '@/models/Order';
 import {
   getTrendyolSettings,
   fetchTrendyolOrders,
   formatTrendyolAxiosError,
 } from '@/lib/trendyol';
-import { findProductBySkuOrBarcode, orderHasStockDeductions } from '@/lib/inventory';
-import {
-  applyOrderStockDeduction,
-  statusRequiresStockDeduction,
-} from '@/lib/order-stock';
-import { restoreOrderStockIfApplied } from '@/lib/stock-reversal';
+import { runTrendyolOrderSync } from '@/lib/trendyol-order-ingest';
 import { allowTrendyolOrderMock } from '@/lib/channel-sync';
 
 export async function GET() {
   try {
     await connectToDatabase();
 
-    let settings;
     let ordersList: Array<Record<string, unknown>> = [];
     let isMock = false;
     let apiError: string | null = null;
 
     try {
-      settings = await getTrendyolSettings();
+      const settings = await getTrendyolSettings();
       const res = (await fetchTrendyolOrders(
         settings.sellerId,
         settings.apiKey,
@@ -80,7 +73,7 @@ export async function GET() {
       ];
     }
 
-    if (ordersList.length === 0) {
+    if (ordersList.length === 0 && !isMock) {
       return NextResponse.json({
         success: true,
         message: 'Trendyol sipariş listesi boş.',
@@ -88,137 +81,27 @@ export async function GET() {
       });
     }
 
-    const sellerId = settings?.sellerId ?? '';
-    const stockDeductAt = settings?.stockDeductAt ?? 'processing';
-    let syncedCount = 0;
-    let stockAdjusted = 0;
-    let stockRestored = 0;
-
-    for (const item of ordersList) {
-      const orderNumber = String(item.orderNumber ?? '');
-      const mappedStatus = mapTrendyolStatus(String(item.status ?? ''));
-      const existing = await Order.findOne({ orderNumber }).lean();
-      const alreadyDeducted =
-        Boolean((existing as { stockApplied?: boolean } | null)?.stockApplied) ||
-        (existing ? await orderHasStockDeductions(orderNumber) : false);
-      const shouldApplyStock =
-        statusRequiresStockDeduction(mappedStatus, stockDeductAt) &&
-        mappedStatus !== 'İptal Edildi' &&
-        !alreadyDeducted;
-
-      const addr = (item.shipmentAddress ?? {}) as Record<string, string>;
-      const customerName = `${addr.firstName ?? ''} ${addr.lastName ?? ''}`.trim();
-      const customerAddress = `${addr.address1 ?? ''} ${addr.address2 ?? ''} ${addr.district ?? ''} / ${addr.city ?? ''}`.trim();
-
-      let costAmount = 0;
-      const orderItems = [];
-
-      for (const line of (item.lines as Array<Record<string, unknown>>) ?? []) {
-        const sku = String(line.merchantSku ?? line.stockCode ?? line.sku ?? '');
-        const barcode = String(line.barcode ?? '');
-        const match = await findProductBySkuOrBarcode(sku, barcode);
-        const product = match?.product as { costPrice?: number } | undefined;
-        const price = Number(line.price ?? line.lineUnitPrice) || 0;
-        const qty = Number(line.quantity) || 1;
-        const itemCost = product ? (product.costPrice || 0) : price * 0.4;
-
-        orderItems.push({
-          productName: String(line.productName ?? 'Ürün'),
-          sku,
-          barcode,
-          lineId: line.lineId != null ? String(line.lineId) : '',
-          quantity: qty,
-          unitPrice: price,
-          totalPrice: Number(line.amount ?? line.lineGrossAmount) || price * qty,
-          costPrice: itemCost,
-        });
-
-        costAmount += itemCost * qty;
-      }
-
-      const totalAmount = Number(item.totalPrice ?? item.packageTotalPrice) || 0;
-      const profitAmount = totalAmount - costAmount;
-      const packageId = String(item.id ?? item.shipmentPackageId ?? '');
-
-      await Order.findOneAndUpdate(
-        { orderNumber },
-        {
-          $set: {
-            platform: 'trendyol',
-            status: mappedStatus,
-            customerName,
-            customerAddress,
-            totalAmount,
-            costAmount,
-            profitAmount,
-            items: orderItems,
-            cargoCompany: String(item.cargoProviderName ?? ''),
-            trackingNumber: String(item.cargoTrackingNumber ?? ''),
-            packageId,
-            platformOrderId: packageId,
-            cargoLabelUrl: sellerId
-              ? `https://api.trendyol.com/sapigw/suppliers/${encodeURIComponent(sellerId)}/shipment-packages/${packageId}/cargo-label`
-              : '',
-          },
-        },
-        { upsert: true, new: true }
-      );
-
-      if (shouldApplyStock) {
-        const result = await applyOrderStockDeduction({
-          orderNumber,
-          platform: 'trendyol',
-          items: orderItems,
-        });
-        if (result.applied) stockAdjusted++;
-      } else if (
-        (mappedStatus === 'İptal Edildi' || mappedStatus === 'İade Edildi') &&
-        alreadyDeducted
-      ) {
-        const restored = await restoreOrderStockIfApplied(orderNumber);
-        if (restored > 0) stockRestored += restored;
-      } else if (existing && !existing.stockApplied && alreadyDeducted) {
-        await Order.updateOne({ orderNumber }, { $set: { stockApplied: true } });
-      }
-
-      syncedCount++;
-    }
+    const result = await runTrendyolOrderSync({
+      preloadedOrders: ordersList,
+      skipTerminal: isMock,
+      skipClaims: isMock,
+    });
 
     return NextResponse.json({
       success: true,
       message: isMock
-        ? `Lokal test siparişleri (${syncedCount} adet) eşitlendi; ${stockAdjusted} siparişte stok düşüldü (işleme alınmış).`
-        : `Trendyol'dan ${syncedCount} sipariş senkronize edildi; ${stockAdjusted} işleme alınmış siparişte stok düşüldü${stockRestored > 0 ? `; ${stockRestored} adet iptal/iade stok iadesi yapıldı` : ''}.`,
-      count: syncedCount,
-      stockAdjusted,
-      stockRestored,
+        ? `Lokal test siparişleri (${result.syncedCount} adet) eşitlendi; ${result.stockAdjusted} siparişte stok düşüldü.`
+        : `Trendyol'dan ${result.syncedCount} sipariş senkronize edildi; ${result.stockAdjusted} işleme alınmış siparişte stok düşüldü${result.stockRestored > 0 ? `; ${result.stockRestored} adet iptal/iade stok iadesi` : ''}${result.claimsReturned > 0 ? `; ${result.claimsReturned} iade talebi işlendi` : ''}.`,
+      count: result.syncedCount,
+      stockAdjusted: result.stockAdjusted,
+      stockRestored: result.stockRestored,
+      claimsReturned: result.claimsReturned,
+      terminalSynced: result.terminalSynced,
       mockUsed: isMock,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';
     console.error('Sipariş senkronizasyon hatası:', error);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
-  }
-}
-
-function mapTrendyolStatus(status: string): string {
-  switch (status) {
-    case 'Created':
-      return 'Beklemede';
-    case 'Awaiting':
-    case 'Picking':
-    case 'Invoiced':
-      return 'Hazırlanıyor';
-    case 'Shipped':
-      return 'Kargolandı';
-    case 'Delivered':
-      return 'Teslim Edildi';
-    case 'Cancelled':
-    case 'UnSupplied':
-      return 'İptal Edildi';
-    case 'Returned':
-      return 'İade Edildi';
-    default:
-      return 'Beklemede';
   }
 }

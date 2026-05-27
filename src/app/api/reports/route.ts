@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
+import { computeFinanceAnalytics } from '@/lib/profit-analytics';
 
 function rangeStart(range: string): Date {
   const now = new Date();
@@ -95,12 +96,32 @@ export async function GET(request: Request) {
       .limit(12)
       .lean();
 
+    let financeNetProfit: number | null = null;
+    let financeHasData = false;
+    try {
+      const finRange =
+        range === 'Bugün' || range === 'Bu Hafta'
+          ? '7g'
+          : range === 'Bu Yıl'
+            ? 'bu-yil'
+            : range === 'Son 3 Ay'
+              ? '30g'
+              : 'bu-ay';
+      const fin = await computeFinanceAnalytics(finRange);
+      financeHasData = fin.hasFinanceData;
+      if (fin.hasFinanceData) financeNetProfit = fin.kpis.netProfit;
+    } catch {
+      /* finans opsiyonel */
+    }
+
     return NextResponse.json({
       success: true,
       range,
       kpis: {
         totalRevenue,
         totalProfit,
+        financeNetProfit,
+        financeHasData,
         orderCount: orders.length,
         trendyolRevenue,
         webRevenue,

@@ -74,7 +74,24 @@ export const TrendyolEndpoints = {
   /** Stok & fiyat (apigw) */
   priceAndInventoryIntegration: (sellerId: string) =>
     `${TRENDYOL_INVENTORY_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/products/price-and-inventory`,
-  /** Marka adı ile arama */
+  /** Cari hesap — settlements (satış, iade, komisyon vb.) */
+  financeSettlements: (sellerId: string) =>
+    `${TRENDYOL_APIGW}/integration/finance/che/sellers/${encodeURIComponent(sellerId)}/settlements`,
+  /** Cari hesap — diğer finans (stopaj, hizmet bedeli, hakediş ödemesi) */
+  financeOtherFinancials: (sellerId: string) =>
+    `${TRENDYOL_APIGW}/integration/finance/che/sellers/${encodeURIComponent(sellerId)}/otherfinancials`,
+  /** Kargo faturası kalemleri */
+  financeCargoInvoiceItems: (sellerId: string, invoiceSerialNumber: string) =>
+    `${TRENDYOL_APIGW}/integration/finance/che/sellers/${encodeURIComponent(sellerId)}/cargo-invoice/${encodeURIComponent(invoiceSerialNumber)}/items`,
+  /** İade talepleri — getClaims */
+  claims: (sellerId: string) =>
+    `${TRENDYOL_ORDER_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/claims`,
+  /** Müşteri soruları filtre */
+  customerQuestionsFilter: (sellerId: string) =>
+    `${TRENDYOL_APIGW}/integration/qna/sellers/${encodeURIComponent(sellerId)}/questions/filter`,
+  /** Müşteri sorusu cevapla */
+  customerQuestionAnswer: (sellerId: string, questionId: string | number) =>
+    `${TRENDYOL_APIGW}/integration/qna/sellers/${encodeURIComponent(sellerId)}/questions/${encodeURIComponent(String(questionId))}/answers`,
   brandByName: () => `${TRENDYOL_PRODUCT_INTEGRATION}/brands/by-name`,
   /** Marka listesi / arama */
   brands: () => `${TRENDYOL_PRODUCT_INTEGRATION}/brands`,

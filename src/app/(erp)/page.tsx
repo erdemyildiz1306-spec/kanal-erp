@@ -79,7 +79,7 @@ export default function Home() {
 
   const kpis = [
     { label: "Satış (7g)", value: fmtMoney(stats.totalSales), icon: TrendingUp, href: "/reports" },
-    { label: "Net Kâr", value: fmtMoney(stats.totalProfit), icon: TrendingUp, href: "/reports" },
+    { label: "Brüt Kâr", value: fmtMoney(stats.totalProfit), icon: TrendingUp, href: "/finans" },
     { label: "Bekleyen", value: String(stats.pendingOrders), icon: ShoppingCart, href: "/orders", alert: stats.pendingOrders > 0 },
     { label: "Kritik Stok", value: String(stats.criticalStock), icon: AlertTriangle, href: "/products", alert: stats.criticalStock > 0 },
   ];

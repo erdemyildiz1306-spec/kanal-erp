@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Wallet,
   UserCircle,
+  LineChart,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ export const primaryNav: NavItem[] = [
 ];
 
 export const secondaryNav: NavItem[] = [
+  { name: "Finans & Kâr", href: "/finans", icon: LineChart },
   { name: "Müşteriler", href: "/customers", icon: UserCircle },
   { name: "Fatura & KDV", href: "/invoices", icon: Receipt },
   { name: "Cari & Kasa", href: "/cari", icon: Wallet },

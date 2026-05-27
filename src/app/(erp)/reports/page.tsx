@@ -13,6 +13,8 @@ export default function ReportsPage() {
   const [kpis, setKpis] = useState({
     totalRevenue: 0,
     totalProfit: 0,
+    financeNetProfit: null as number | null,
+    financeHasData: false,
     orderCount: 0,
     trendyolRevenue: 0,
     webRevenue: 0,
@@ -134,10 +136,27 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-2">
             <p className="text-sm text-slate-600">
-              Tahmini brüt kâr (maliyet düşülmüş): <strong>{fmt(kpis.totalProfit)}</strong>
+              Brüt kâr (maliyet düşülmüş): <strong>{fmt(kpis.totalProfit)}</strong>
             </p>
+            {kpis.financeHasData && kpis.financeNetProfit != null ? (
+              <p className="text-sm text-emerald-800">
+                Trendyol net kâr (komisyon + stopaj + hizmet dahil):{" "}
+                <strong>{fmt(kpis.financeNetProfit)}</strong> —{" "}
+                <a href="/finans" className="underline">
+                  Finans detayı
+                </a>
+              </p>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Gerçek net kâr için{" "}
+                <a href="/finans" className="underline text-[var(--erp-accent)]">
+                  Finans & Kâr
+                </a>{" "}
+                sayfasından Trendyol finans verisini çekin.
+              </p>
+            )}
           </div>
         </>
       )}

@@ -35,6 +35,13 @@ const OrderSchema = new mongoose.Schema({
   costAmount: { type: Number, default: 0 },
   totalAmount: { type: Number, required: true },
   profitAmount: { type: Number, default: 0 },
+  /** Trendyol settlement — komisyon (Sale kayıtlarından) */
+  trendyolCommission: { type: Number, default: 0 },
+  /** Trendyol settlement — satıcı hakediş */
+  trendyolSellerRevenue: { type: Number, default: 0 },
+  /** sellerRevenue − costAmount (finans senkronu sonrası) */
+  netProfitAmount: { type: Number, default: null },
+  financeSyncedAt: { type: Date, default: null },
   
   items: [OrderItemSchema],
   
