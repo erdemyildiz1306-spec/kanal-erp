@@ -23,9 +23,11 @@ type Analytics = {
     marginPct: number;
     profitRatePct: number;
     commission: number;
+    sellerRevenue: number;
     cargoFee: number;
     serviceFee: number;
     stopaj: number;
+    discount: number;
     productCost: number;
     returns: number;
     adSpend: number;
@@ -505,12 +507,21 @@ export default function FinansPage() {
             </div>
 
             <div className="rounded-xl border border-blue-100 bg-blue-50/80 p-4 text-sm text-blue-900">
-              <strong>Maliyet özeti:</strong> Net satış {fmt(data.kpis.grossSales)} −
-              ürün maliyeti {fmt(data.kpis.productCost)} − komisyon{" "}
-              {fmt(data.kpis.commission)} − kargo {fmt(data.kpis.cargoFee)} − hizmet{" "}
-              {fmt(data.kpis.serviceFee)} − stopaj {fmt(data.kpis.stopaj)}
+              <strong>Maliyet özeti:</strong> Brüt satış {fmt(data.kpis.grossSales)} − komisyon{" "}
+              {fmt(data.kpis.commission)} = hakediş {fmt(data.kpis.sellerRevenue)}. Hakediş −
+              ürün maliyeti {fmt(data.kpis.productCost)} − kargo {fmt(data.kpis.cargoFee)} −
+              hizmet {fmt(data.kpis.serviceFee)} − stopaj {fmt(data.kpis.stopaj)}
+              {data.kpis.discount > 0 ? (
+                <> − indirim {fmt(data.kpis.discount)}</>
+              ) : null}
               {data.kpis.adSpend > 0 ? <> − reklam {fmt(data.kpis.adSpend)}</> : null} ={" "}
               <strong>net kâr {fmt(data.kpis.netProfit)}</strong>
+              {data.kpis.cargoFee === 0 ? (
+                <span className="block text-xs mt-2 text-blue-800/80">
+                  Kargo ₺0 ise «Trendyol Finans Çek» ile yeniden senkronize edin; kargo faturaları
+                  ayrı API ile çekilir.
+                </span>
+              ) : null}
             </div>
           </div>
         )

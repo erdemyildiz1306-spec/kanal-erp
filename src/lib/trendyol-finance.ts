@@ -18,7 +18,17 @@ export const SETTLEMENT_SYNC_TYPES = [
   'Sale',
   'Return',
   'Discount',
+  'DiscountCancel',
   'Coupon',
+  'CouponCancel',
+  'CommissionNegative',
+  'CommissionPositive',
+  'CommissionNegativeCancel',
+  'CommissionPositiveCancel',
+  'SellerRevenuePositive',
+  'SellerRevenueNegative',
+  'ProvisionPositive',
+  'ProvisionNegative',
 ] as const;
 
 export const OTHER_FINANCIAL_SYNC_TYPES = [
@@ -197,6 +207,74 @@ function isAdSpendDescription(desc: string): boolean {
   );
 }
 
+function isCargoInvoiceDescription(desc: string): boolean {
+  const d = String(desc ?? '').toLocaleLowerCase('tr-TR');
+  return /kargo\s*fatur|kargo fatura|gönderi kargo|iade kargo/.test(d);
+}
+
+async function fetchCargoInvoiceItemsTotal(
+  sellerId: string,
+  invoiceSerialNumber: string,
+  headers: Record<string, string>
+): Promise<number> {
+  const url = TrendyolEndpoints.financeCargoInvoiceItems(sellerId, invoiceSerialNumber);
+  let page = 0;
+  let totalPages = 1;
+  let sum = 0;
+
+  while (page < totalPages) {
+    const { data } = await axios.get<PageResponse & { content?: Array<{ amount?: number }> }>(
+      url,
+      { headers, params: { page, size: 500 }, timeout: 90_000 }
+    );
+    const rows = Array.isArray(data?.content) ? data.content : [];
+    totalPages = Math.max(1, Number(data?.totalPages) || 1);
+    for (const row of rows) {
+      sum += Number(row.amount) || 0;
+    }
+    page++;
+    if (!rows.length) break;
+  }
+  return sum;
+}
+
+/** Kargo faturası DeductionInvoices kayıtları için detay API toplamını yansıt */
+async function enrichCargoInvoicesFromApi(
+  since: Date,
+  sellerId: string,
+  headers: Record<string, string>
+): Promise<number> {
+  const rows = await FinancialTransaction.find({
+    source: 'otherfinancial',
+    transactionType: 'DeductionInvoices',
+    transactionDate: { $gte: since },
+  }).lean();
+
+  let enriched = 0;
+  for (const row of rows) {
+    const desc = String(row.description ?? '');
+    if (!isCargoInvoiceDescription(desc)) continue;
+
+    const invoiceId = String(row.trendyolId ?? '').trim();
+    if (!invoiceId) continue;
+
+    let cargoTotal = Number(row.debt) || 0;
+    try {
+      const itemSum = await fetchCargoInvoiceItemsTotal(sellerId, invoiceId, headers);
+      if (itemSum > 0) cargoTotal = itemSum;
+    } catch (error) {
+      console.warn(`Kargo faturası detay alınamadı (${invoiceId}):`, error);
+    }
+
+    await FinancialTransaction.updateOne(
+      { trendyolId: row.trendyolId },
+      { $set: { cargoInvoiceTotal: cargoTotal } }
+    );
+    enriched++;
+  }
+  return enriched;
+}
+
 /** Finans ekstresindeki reklam kalemlerini AdSpendEntry olarak kaydet */
 async function syncAdSpendFromFinance(since: Date): Promise<number> {
   const rows = await FinancialTransaction.find({
@@ -238,6 +316,7 @@ export async function syncTrendyolFinance(opts?: {
   upserted: number;
   ordersUpdated: number;
   adSpendSynced: number;
+  cargoInvoicesEnriched: number;
   from: string;
   to: string;
 }> {
@@ -292,11 +371,17 @@ export async function syncTrendyolFinance(opts?: {
 
   const ordersUpdated = await applySaleFinanceToOrders(start);
   const adSpendSynced = await syncAdSpendFromFinance(start);
+  const cargoInvoicesEnriched = await enrichCargoInvoicesFromApi(
+    start,
+    settings.sellerId,
+    headers
+  );
 
   return {
     upserted,
     ordersUpdated,
     adSpendSynced,
+    cargoInvoicesEnriched,
     from: start.toISOString(),
     to: end.toISOString(),
   };

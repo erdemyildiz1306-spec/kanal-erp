@@ -40,11 +40,41 @@ function isReturnType(t: string) {
   return t === 'Return' || t === 'İade';
 }
 
+function isCommissionNegativeType(t: string) {
+  return /^CommissionNegative$/i.test(t) || t === 'Komisyon Negatif Düzeltme';
+}
+
+function isCommissionPositiveType(t: string) {
+  return /^CommissionPositive$/i.test(t) || t === 'Komisyon Pozitif Düzeltme';
+}
+
 function isAdSpendDescription(desc: string): boolean {
   const d = desc.toLocaleLowerCase('tr-TR');
   return /reklam|sponsor|mağaza reklam|ürün reklam|advert|\bads\b|kampanya reklam|performance/.test(
     d
   );
+}
+
+function isCargoInvoiceDescription(desc: string): boolean {
+  const d = String(desc ?? '').toLocaleLowerCase('tr-TR');
+  return /kargo\s*fatur|kargo fatura|gönderi kargo|iade kargo/.test(d);
+}
+
+function isServiceFeeDescription(desc: string): boolean {
+  const d = String(desc ?? '').toLocaleLowerCase('tr-TR');
+  return /platform|hizmet bedel|international service|ty hizmet/.test(d);
+}
+
+function saleCommission(row: {
+  credit?: number;
+  sellerRevenue?: number;
+  commissionAmount?: number;
+}): number {
+  const credit = Number(row.credit) || 0;
+  const rev = Number(row.sellerRevenue) || 0;
+  const fromField = Number(row.commissionAmount) || 0;
+  const implied = credit > 0 && rev >= 0 ? Math.max(0, credit - rev) : 0;
+  return Math.max(fromField, implied);
 }
 
 export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
@@ -72,13 +102,16 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
 
   for (const row of txRows) {
     const type = String(row.transactionType ?? '');
-    const desc = String(row.description ?? '').toLocaleLowerCase('tr-TR');
+    const descRaw = String(row.description ?? '');
+    const desc = descRaw.toLocaleLowerCase('tr-TR');
 
     if (row.source === 'settlement') {
       if (isSaleType(type)) {
-        grossSales += Number(row.credit) || 0;
-        commission += Number(row.commissionAmount) || 0;
-        sellerRevenue += Number(row.sellerRevenue) || 0;
+        const credit = Number(row.credit) || 0;
+        const rev = Number(row.sellerRevenue) || 0;
+        grossSales += credit;
+        commission += saleCommission(row);
+        sellerRevenue += rev;
 
         const bc = String(row.barcode ?? '').trim();
         if (bc) {
@@ -90,24 +123,50 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
             name: bc,
           };
           prev.sales += 1;
-          prev.revenue += Number(row.credit) || 0;
-          prev.profit += Number(row.sellerRevenue) || 0;
+          prev.revenue += credit;
+          prev.profit += rev;
           productAgg.set(bc, prev);
         }
       } else if (isReturnType(type)) {
         returns += Number(row.debt) || 0;
-        sellerRevenue -= Number(row.sellerRevenue) || Number(row.debt) || 0;
-      } else if (type === 'Discount' || type === 'İndirim') {
+        const rev = Number(row.sellerRevenue) || 0;
+        sellerRevenue -= rev > 0 ? rev : Number(row.debt) || 0;
+        const comm = Number(row.commissionAmount) || 0;
+        if (comm > 0) commission -= comm;
+      } else if (isCommissionNegativeType(type)) {
+        commission += Number(row.commissionAmount) || Number(row.debt) || 0;
+      } else if (isCommissionPositiveType(type)) {
+        commission -= Number(row.commissionAmount) || Number(row.credit) || 0;
+      } else if (
+        type === 'Discount' ||
+        type === 'İndirim' ||
+        type === 'Coupon' ||
+        type === 'Kupon'
+      ) {
         discount += Number(row.debt) || 0;
+        sellerRevenue -= Number(row.sellerRevenue) || Number(row.debt) || 0;
+      } else if (
+        type === 'DiscountCancel' ||
+        type === 'İndirim İptal' ||
+        type === 'CouponCancel' ||
+        type === 'Kupon İptal'
+      ) {
+        discount -= Number(row.credit) || 0;
+        sellerRevenue += Number(row.sellerRevenue) || Number(row.credit) || 0;
       }
     } else if (row.source === 'otherfinancial') {
       if (type === 'Stoppage' || type === 'E-ticaret Stopajı') {
         stopaj += Number(row.debt) || 0;
       } else if (type === 'DeductionInvoices') {
-        const amt = Number(row.debt) || 0;
+        const amt =
+          Number(row.cargoInvoiceTotal) > 0
+            ? Number(row.cargoInvoiceTotal)
+            : Number(row.debt) || 0;
         if (isAdSpendDescription(desc)) {
           adSpendFromFinance += amt;
-        } else if (desc.includes('platform') || desc.includes('hizmet')) {
+        } else if (isCargoInvoiceDescription(descRaw)) {
+          cargoFee += amt;
+        } else if (isServiceFeeDescription(desc)) {
           serviceFee += amt;
         } else if (desc.includes('kargo')) {
           cargoFee += amt;
@@ -116,6 +175,10 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
         }
       }
     }
+  }
+
+  if (commission <= 0 && grossSales > 0 && sellerRevenue > 0) {
+    commission = Math.max(0, grossSales - sellerRevenue);
   }
 
   const manualAdRows = await AdSpendEntry.find({

@@ -21,6 +21,8 @@ const FinancialTransactionSchema = new mongoose.Schema(
     debt: { type: Number, default: 0 },
     credit: { type: Number, default: 0 },
     description: { type: String, default: '' },
+    /** Kargo faturası detay API toplamı (DeductionInvoices — Kargo Faturası) */
+    cargoInvoiceTotal: { type: Number, default: null },
   },
   { timestamps: true }
 );
