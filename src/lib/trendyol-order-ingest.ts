@@ -23,6 +23,7 @@ import {
   coalesceTrendyolPackageFields,
   parseTrendyolWebhookPackages,
   resolveTrendyolPackageStatusFromPayload,
+  resolveTrendyolCargoTrackingFromPackage,
   trendyolPackageSellerIdFromPayload,
   tyScalarToString,
   extractTrendyolPackageMeta,
@@ -121,7 +122,9 @@ export async function upsertTrendyolOrderPackage(
         profitAmount: totalAmount - costAmount,
         items: orderItems,
         cargoCompany: String(item.cargoProviderName ?? ''),
-        trackingNumber: tyScalarToString(item.cargoTrackingNumber),
+        trackingNumber:
+          resolveTrendyolCargoTrackingFromPackage(item) ||
+          tyScalarToString(item.cargoTrackingNumber),
         packageId,
         platformOrderId: packageId,
         trendyolMeta,

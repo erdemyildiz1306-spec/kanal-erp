@@ -4,7 +4,9 @@ import Order from '@/models/Order';
 import {
   coalesceTrendyolPackageFields,
   extractTrendyolPackageMeta,
+  isTrendyolCommonLabelCarrier,
   resolveCommonLabelQueryId,
+  resolveTrendyolCargoTrackingFromPackage,
   tyScalarToString,
 } from '@/lib/trendyol-package-coalesce';
 import {
@@ -15,6 +17,10 @@ import {
 } from '@/lib/trendyol';
 import { TrendyolEndpoints } from '@/lib/trendyol-endpoints';
 import { processOrderForFulfillment } from '@/lib/order-stock';
+
+type CommonLabelResponse = { data?: Array<{ format?: string; label?: string }> };
+
+const LABEL_POLL_DELAYS_MS = [1500, 2000, 3000, 4000];
 
 async function refreshTrendyolOrderCargoFields(orderId: string): Promise<void> {
   const order = await Order.findById(orderId).lean();
@@ -52,7 +58,9 @@ async function refreshTrendyolOrderCargoFields(orderId: string): Promise<void> {
 
   const coalesced = coalesceTrendyolPackageFields(match);
   const meta = extractTrendyolPackageMeta(coalesced);
-  const tracking = tyScalarToString(coalesced.cargoTrackingNumber);
+  const tracking =
+    resolveTrendyolCargoTrackingFromPackage(coalesced) ||
+    tyScalarToString(coalesced.cargoTrackingNumber);
   const newPackageId = tyScalarToString(coalesced.shipmentPackageId ?? coalesced.id);
 
   await Order.updateOne(
@@ -68,19 +76,136 @@ async function refreshTrendyolOrderCargoFields(orderId: string): Promise<void> {
   );
 }
 
-async function requestCommonLabelFromTrendyol(
+function commonLabelHeaders(apiKey: string, apiSecret: string, sellerId: string) {
+  return getTrendyolAuthHeader(apiKey, apiSecret, sellerId);
+}
+
+/** Trendyol: önce createCommonLabel (POST), sonra getCommonLabel (GET path). */
+async function createTrendyolCommonLabel(
   sellerId: string,
   apiKey: string,
   apiSecret: string,
-  queryId: string
-) {
-  const headers = getTrendyolAuthHeader(apiKey, apiSecret, sellerId);
+  cargoTrackingNumber: string
+): Promise<void> {
+  const headers = commonLabelHeaders(apiKey, apiSecret, sellerId);
+  try {
+    await axios.post(
+      TrendyolEndpoints.commonLabelByTracking(sellerId, cargoTrackingNumber),
+      { format: 'ZPL', boxQuantity: 1 },
+      { headers, timeout: 90_000 }
+    );
+  } catch (err: unknown) {
+    const status = axios.isAxiosError(err) ? err.response?.status : 0;
+    const msg = formatTrendyolAxiosError(err).toLocaleLowerCase('tr-TR');
+    if (status === 409 || msg.includes('already') || msg.includes('mevcut')) return;
+    if (status === 400 && (msg.includes('not_found') || msg.includes('cargotracking'))) {
+      throw err;
+    }
+    /* Diğer 4xx/5xx: etiket zaten oluşturulmuş olabilir — GET ile dene */
+  }
+}
+
+async function getTrendyolCommonLabelByPath(
+  sellerId: string,
+  apiKey: string,
+  apiSecret: string,
+  cargoTrackingNumber: string
+): Promise<CommonLabelResponse> {
+  const headers = commonLabelHeaders(apiKey, apiSecret, sellerId);
+  const { data } = await axios.get(
+    TrendyolEndpoints.commonLabelByTracking(sellerId, cargoTrackingNumber),
+    { headers, timeout: 90_000 }
+  );
+  return data as CommonLabelResponse;
+}
+
+async function getTrendyolCommonLabelByQuery(
+  sellerId: string,
+  apiKey: string,
+  apiSecret: string,
+  cargoTrackingNumber: string
+): Promise<CommonLabelResponse> {
+  const headers = commonLabelHeaders(apiKey, apiSecret, sellerId);
   const { data } = await axios.get(TrendyolEndpoints.commonLabelQuery(sellerId), {
     headers,
-    params: { id: queryId },
+    params: { id: cargoTrackingNumber },
     timeout: 90_000,
   });
-  return data as { data?: Array<{ format?: string; label?: string }> };
+  return data as CommonLabelResponse;
+}
+
+function hasLabelPayload(data: CommonLabelResponse | undefined): boolean {
+  return Boolean(data?.data?.[0]?.label);
+}
+
+async function fetchCommonLabelWithCreateFlow(
+  orderId: string,
+  sellerId: string,
+  apiKey: string,
+  apiSecret: string,
+  cargoTrackingNumber: string
+): Promise<CommonLabelResponse> {
+  await createTrendyolCommonLabel(sellerId, apiKey, apiSecret, cargoTrackingNumber);
+
+  let lastErr: unknown;
+  for (let i = 0; i <= LABEL_POLL_DELAYS_MS.length; i++) {
+    try {
+      const data = await getTrendyolCommonLabelByPath(
+        sellerId,
+        apiKey,
+        apiSecret,
+        cargoTrackingNumber
+      );
+      if (hasLabelPayload(data)) return data;
+    } catch (err: unknown) {
+      lastErr = err;
+      const msg = formatTrendyolAxiosError(err).toLocaleLowerCase('tr-TR');
+      const retryable =
+        msg.includes('not_found') ||
+        msg.includes('cargotracking') ||
+        msg.includes('400') ||
+        msg.includes('takip');
+      if (!retryable) throw err;
+    }
+
+    if (i < LABEL_POLL_DELAYS_MS.length) {
+      await new Promise((r) => setTimeout(r, LABEL_POLL_DELAYS_MS[i]));
+      if (i === 1) await refreshTrendyolOrderCargoFields(orderId);
+    }
+  }
+
+  try {
+    const queryData = await getTrendyolCommonLabelByQuery(
+      sellerId,
+      apiKey,
+      apiSecret,
+      cargoTrackingNumber
+    );
+    if (hasLabelPayload(queryData)) return queryData;
+  } catch (queryErr: unknown) {
+    lastErr = queryErr;
+  }
+
+  throw lastErr ?? new Error('Trendyol ortak etiket yanıtında etiket bulunamadı.');
+}
+
+function formatCommonLabelFailure(
+  err: unknown,
+  cargoCompany: string,
+  cargoTrackingNumber: string
+): string {
+  const base = formatTrendyolAxiosError(err);
+  const lower = base.toLocaleLowerCase('tr-TR');
+
+  if (!isTrendyolCommonLabelCarrier(cargoCompany)) {
+    return `${base} — Ortak etiket yalnızca Trendyol anlaşmalı kargo (TEX/Aras) için geçerlidir. «Paket çıktısı (PDF)» veya kargo firmanızın panelini kullanın.`;
+  }
+
+  if (lower.includes('not_found') || lower.includes('cargotracking')) {
+    return `${base} — Takip no: ${cargoTrackingNumber}. Sipariş «Hazırlanıyor» (Picking) olmalı; «Trendyol'dan Çek» ile yenileyip birkaç dakika bekleyin veya «Paket çıktısı (PDF)» kullanın.`;
+  }
+
+  return `${base} — Sayısal cargoTrackingNumber için siparişi yeniden senkronize edin veya yerel paket çıktısı kullanın.`;
 }
 
 export async function fetchTrendyolCommonLabel(
@@ -118,29 +243,25 @@ export async function fetchTrendyolCommonLabel(
     throw new Error(qid.error);
   }
 
+  const cargoCompany = String(fresh?.cargoCompany ?? meta.cargoProviderName ?? '');
+  if (!isTrendyolCommonLabelCarrier(cargoCompany)) {
+    throw new Error(
+      `Ortak etiket yalnızca Trendyol anlaşmalı kargo (TEX/Aras) için kullanılabilir. Bu sipariş: «${cargoCompany || 'bilinmiyor'}». «Paket çıktısı (PDF)» veya kargo panelinizi kullanın.`
+    );
+  }
+
   const settings = await getTrendyolSettings();
 
-  let data: { data?: Array<{ format?: string; label?: string }> };
+  let data: CommonLabelResponse;
   try {
-    data = await requestCommonLabelFromTrendyol(
+    data = await fetchCommonLabelWithCreateFlow(
+      orderId,
       settings.sellerId,
       settings.apiKey,
       settings.apiSecret,
       qid.id
     );
   } catch (firstErr: unknown) {
-    const msg = formatTrendyolAxiosError(firstErr).toLocaleLowerCase('tr-TR');
-    const retryable =
-      msg.includes('cargotracking') ||
-      msg.includes('kargo') ||
-      msg.includes('400') ||
-      msg.includes('takip');
-
-    if (!retryable) {
-      throw new Error(formatTrendyolAxiosError(firstErr));
-    }
-
-    await new Promise((r) => setTimeout(r, 1500));
     await refreshTrendyolOrderCargoFields(orderId);
     fresh = await Order.findById(orderId).lean();
     meta = (fresh?.trendyolMeta ?? {}) as Record<string, unknown>;
@@ -152,16 +273,15 @@ export async function fetchTrendyolCommonLabel(
     }
 
     try {
-      data = await requestCommonLabelFromTrendyol(
+      data = await fetchCommonLabelWithCreateFlow(
+        orderId,
         settings.sellerId,
         settings.apiKey,
         settings.apiSecret,
         qid.id
       );
     } catch (secondErr: unknown) {
-      throw new Error(
-        `${formatTrendyolAxiosError(secondErr)} — Sayısal cargoTrackingNumber için siparişi yeniden senkronize edin veya yerel paket çıktısı kullanın.`
-      );
+      throw new Error(formatCommonLabelFailure(secondErr, cargoCompany, qid.id));
     }
   }
 
@@ -170,7 +290,7 @@ export async function fetchTrendyolCommonLabel(
   const format = first?.format || 'PDF';
   if (!labelPayload) {
     throw new Error(
-      'Trendyol etiket yanıtında PDF/ZPL bulunamadı. Paket henüz kargo sistemine düşmemiş olabilir; birkaç dakika sonra tekrar deneyin.'
+      'Trendyol etiket yanıtında PDF/ZPL bulunamadı. Paket henüz kargo sistemine düşmemiş olabilir; birkaç dakika sonra tekrar deneyin veya «Paket çıktısı (PDF)» kullanın.'
     );
   }
 

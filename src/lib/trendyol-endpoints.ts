@@ -89,7 +89,10 @@ export const TrendyolEndpoints = {
   /** İade talepleri — getClaims */
   claims: (sellerId: string) =>
     `${TRENDYOL_ORDER_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/claims`,
-  /** Ortak kargo etiketi — common-label/query */
+  /** Ortak kargo etiketi — createCommonLabel / getCommonLabel (path) */
+  commonLabelByTracking: (sellerId: string, cargoTrackingNumber: string) =>
+    `${TRENDYOL_APIGW}/integration/sellers/${encodeURIComponent(sellerId)}/common-label/${encodeURIComponent(cargoTrackingNumber)}`,
+  /** Ortak kargo etiketi — common-label/query (fallback) */
   commonLabelQuery: (sellerId: string) =>
     `${TRENDYOL_APIGW}/integration/sellers/${encodeURIComponent(sellerId)}/common-label/query`,
   /** Müşteri soruları filtre */

@@ -60,12 +60,45 @@ export function coalesceTrendyolPackageFields(
     });
   }
 
-  if (p.cargoTrackingNumber != null) {
+  const cargoTracking = resolveTrendyolCargoTrackingFromPackage(p);
+  if (cargoTracking) {
+    p.cargoTrackingNumber = cargoTracking;
+  } else if (p.cargoTrackingNumber != null) {
     p.cargoTrackingNumber = tyScalarToString(p.cargoTrackingNumber);
   }
   if (p.orderNumber != null) p.orderNumber = tyScalarToString(p.orderNumber);
 
   return p;
+}
+
+/** Ortak etiket için sayısal cargoTrackingNumber — TY alan adı varyantları. */
+export function resolveTrendyolCargoTrackingFromPackage(
+  pkg: Record<string, unknown>
+): string {
+  for (const key of [
+    'cargoTrackingNumber',
+    'cargoTracking',
+    'trackingNumber',
+    'shipmentNumber',
+  ]) {
+    const s = tyScalarToString(pkg[key]);
+    if (!s || isCorruptedNumericIdString(s)) continue;
+    const digits = s.replace(/\s+/g, '');
+    if (/^\d+$/.test(digits)) return digits;
+  }
+  return '';
+}
+
+/** Ortak etiket yalnızca Trendyol öder (TEX / Aras) taşıyıcılarında geçerlidir. */
+export function isTrendyolCommonLabelCarrier(cargoProviderName: string): boolean {
+  const n = String(cargoProviderName ?? '').toLowerCase();
+  if (!n) return true;
+  return (
+    n.includes('tex') ||
+    n.includes('trendyol express') ||
+    n.includes('trendyol kargo') ||
+    n.includes('aras')
+  );
 }
 
 export function parseTrendyolWebhookPackages(raw: unknown): Record<string, unknown>[] {
@@ -134,8 +167,10 @@ export function extractTrendyolPackageMeta(
   pkg: Record<string, unknown>
 ): Record<string, unknown> {
   const addr = (pkg.shipmentAddress ?? {}) as Record<string, unknown>;
+  const cargoTrackingNumber = resolveTrendyolCargoTrackingFromPackage(pkg);
   return {
-    cargoTrackingNumber: tyScalarToString(pkg.cargoTrackingNumber),
+    cargoTrackingNumber,
+    cargoTracking: cargoTrackingNumber,
     shipmentPackageId: tyScalarToString(pkg.shipmentPackageId ?? pkg.id),
     orderNumber: tyScalarToString(pkg.orderNumber),
     cargoProviderName: String(pkg.cargoProviderName ?? ''),
