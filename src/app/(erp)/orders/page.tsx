@@ -12,6 +12,8 @@ import {
   orderStockStatusLabel,
 } from "@/lib/order-refund-rules";
 import { isTrendyolDhlCargo } from "@/lib/trendyol-package-coalesce";
+import OrderAutoSync from "@/components/layout/OrderAutoSync";
+import OrderNotifyPoller from "@/components/layout/OrderNotifyPoller";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -106,9 +108,9 @@ export default function OrdersPage() {
   }, [isPrintPreviewOpen, loadPrintSettings]);
 
   // Siparişleri Veritabanından Çekme
-  const fetchOrders = async () => {
+  const fetchOrders = async (opts?: { silent?: boolean }) => {
     try {
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
       const res = await fetch('/api/orders');
       const data = await res.json();
       if (data.success) {
@@ -117,13 +119,13 @@ export default function OrdersPage() {
     } catch (err) {
       console.error("Siparişler yüklenirken hata oluştu:", err);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchOrders();
-    const onSync = () => void fetchOrders();
+    const onSync = () => void fetchOrders({ silent: true });
     window.addEventListener("erp-orders-synced", onSync);
     return () => window.removeEventListener("erp-orders-synced", onSync);
   }, []);
@@ -1123,6 +1125,8 @@ export default function OrdersPage() {
           </div>,
           document.body
         )}
+      <OrderAutoSync />
+      <OrderNotifyPoller />
     </div>
   );
 }

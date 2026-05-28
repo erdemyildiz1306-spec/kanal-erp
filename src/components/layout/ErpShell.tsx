@@ -5,8 +5,6 @@ import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import MobileMoreSheet from "@/components/layout/MobileMoreSheet";
-import OrderAutoSync from "@/components/layout/OrderAutoSync";
-import OrderNotifyPoller from "@/components/layout/OrderNotifyPoller";
 import FcmBootstrap from "@/components/layout/FcmBootstrap";
 
 export default function ErpShell({ children }: { children: React.ReactNode }) {
@@ -30,8 +28,6 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
         <div className="print:hidden shrink-0 sticky top-0 z-40">
           <Header />
         </div>
-        <OrderAutoSync />
-        <OrderNotifyPoller />
         <FcmBootstrap enabled={sessionReady} />
         <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--erp-bg)] px-3 py-4 md:px-5 md:py-5 lg:px-6 lg:py-6 safe-pb-nav print:overflow-visible print:p-0 print:pb-0">
           {children}

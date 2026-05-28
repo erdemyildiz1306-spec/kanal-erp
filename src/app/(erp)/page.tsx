@@ -70,9 +70,6 @@ export default function Home() {
       }
     };
     void refresh();
-    const onSync = () => void refresh();
-    window.addEventListener("erp-orders-synced", onSync);
-    return () => window.removeEventListener("erp-orders-synced", onSync);
   }, []);
 
   if (loading) return <Spinner label="Özet yükleniyor…" />;
