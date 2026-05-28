@@ -4,7 +4,8 @@ import Order from '@/models/Order';
 import {
   coalesceTrendyolPackageFields,
   extractTrendyolPackageMeta,
-  isTrendyolCommonLabelCarrier,
+  isSellerOwnCargoContract,
+  isTrendyolDhlCargo,
   resolveCommonLabelQueryId,
   resolveTrendyolCargoTrackingFromPackage,
   tyScalarToString,
@@ -192,20 +193,21 @@ async function fetchCommonLabelWithCreateFlow(
 function formatCommonLabelFailure(
   err: unknown,
   cargoCompany: string,
-  cargoTrackingNumber: string
+  cargoTrackingNumber: string,
+  trackingNumber?: string
 ): string {
   const base = formatTrendyolAxiosError(err);
   const lower = base.toLocaleLowerCase('tr-TR');
 
-  if (!isTrendyolCommonLabelCarrier(cargoCompany)) {
-    return `${base} — Ortak etiket yalnızca Trendyol anlaşmalı kargo (TEX/Aras) için geçerlidir. «Paket çıktısı (PDF)» veya kargo firmanızın panelini kullanın.`;
+  if (isSellerOwnCargoContract(cargoCompany, trackingNumber)) {
+    return `${base} — Takip alanı harf içeriyorsa bu satıcı anlaşmalı kargo olabilir; kargo panelinizden etiket alın veya «Paket çıktısı (PDF)» kullanın.`;
   }
 
   if (lower.includes('not_found') || lower.includes('cargotracking')) {
-    return `${base} — Takip no: ${cargoTrackingNumber}. Sipariş «Hazırlanıyor» (Picking) olmalı; «Trendyol'dan Çek» ile yenileyip birkaç dakika bekleyin veya «Paket çıktısı (PDF)» kullanın.`;
+    return `${base} — Takip no: ${cargoTrackingNumber}. Sipariş «Hazırlanıyor» (Picking) olmalı; «Trendyol'dan Çek» ile yenileyip 1–2 dk bekleyin. Geçici çözüm: «Paket çıktısı (PDF)».`;
   }
 
-  return `${base} — Sayısal cargoTrackingNumber için siparişi yeniden senkronize edin veya yerel paket çıktısı kullanın.`;
+  return `${base} — «Trendyol'dan Çek» ile yenileyin veya «Paket çıktısı (PDF)» kullanın.`;
 }
 
 export async function fetchTrendyolCommonLabel(
@@ -244,9 +246,9 @@ export async function fetchTrendyolCommonLabel(
   }
 
   const cargoCompany = String(fresh?.cargoCompany ?? meta.cargoProviderName ?? '');
-  if (!isTrendyolCommonLabelCarrier(cargoCompany)) {
+  if (isTrendyolDhlCargo(cargoCompany)) {
     throw new Error(
-      `Ortak etiket yalnızca Trendyol anlaşmalı kargo (TEX/Aras) için kullanılabilir. Bu sipariş: «${cargoCompany || 'bilinmiyor'}». «Paket çıktısı (PDF)» veya kargo panelinizi kullanın.`
+      'DHL kargo Trendyol ortak etiket API\'sini kullanmaz. Etiketi DHL eCommerce / Trendyol satıcı panelinden yazdırın; takip numarasını sipariş detayındaki «DHL takip → Trendyol\'a ilet» ile gönderin. «Paket çıktısı (PDF)» paket listesi için kullanılabilir.'
     );
   }
 
@@ -281,7 +283,14 @@ export async function fetchTrendyolCommonLabel(
         qid.id
       );
     } catch (secondErr: unknown) {
-      throw new Error(formatCommonLabelFailure(secondErr, cargoCompany, qid.id));
+      throw new Error(
+        formatCommonLabelFailure(
+          secondErr,
+          cargoCompany,
+          qid.id,
+          String(fresh?.trackingNumber ?? '')
+        )
+      );
     }
   }
 

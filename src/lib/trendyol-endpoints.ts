@@ -65,6 +65,9 @@ export const TrendyolEndpoints = {
   /** Paket statü bildirimi (Picking / Invoiced) */
   shipmentPackageUpdate: (sellerId: string, packageId: string) =>
     `${TRENDYOL_ORDER_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/shipment-packages/${encodeURIComponent(packageId)}`,
+  /** DHL vb. takip numarası bildirimi (updateTrackingNumber) */
+  shipmentPackageTrackingDetails: (sellerId: string, packageId: string) =>
+    `${TRENDYOL_ORDER_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/shipment-packages/${encodeURIComponent(packageId)}/tracking-details`,
   /** Ürün oluşturma (v1 — onay bekleyenler) */
   productCreate: (sellerId: string) =>
     `${TRENDYOL_PRODUCT_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/products`,

@@ -11,6 +11,7 @@ import {
   trendyolRefundActions,
   orderStockStatusLabel,
 } from "@/lib/order-refund-rules";
+import { isTrendyolDhlCargo } from "@/lib/trendyol-package-coalesce";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -50,6 +51,20 @@ export default function OrdersPage() {
   });
   const [cargoSaving, setCargoSaving] = useState(false);
   const [tyLabelLoading, setTyLabelLoading] = useState(false);
+  const [tyTrackingLoading, setTyTrackingLoading] = useState(false);
+
+  const orderIsDhl = (order: {
+    platform?: string;
+    cargoCompany?: string;
+    trendyolMeta?: { cargoProviderName?: string };
+  } | null) => {
+    if (order?.platform !== "trendyol") return false;
+    const names = [
+      order.cargoCompany,
+      order.trendyolMeta?.cargoProviderName,
+    ];
+    return names.some((n) => isTrendyolDhlCargo(String(n ?? "")));
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -144,34 +159,59 @@ export default function OrdersPage() {
       window.removeEventListener("erp-navigate-order", onNavigateOrder);
   }, [orders]);
 
-  const handlePrint = async (order: any) => {
-    try {
-      const res = await fetch(`/api/orders/process-label?id=${order._id}`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!data.success) {
-        alert(data.error || "Etiket işlemi başarısız.");
-        return;
+  const handlePackagePdf = async (order: { _id: string; status?: string; [key: string]: unknown }) => {
+    let orderForPrint = order;
+    const needsFulfillment =
+      order.status === "Beklemede" ||
+      (order.platform === "trendyol" && !order.stockApplied);
+
+    if (needsFulfillment) {
+      try {
+        const res = await fetch(`/api/orders/process-label?id=${order._id}`, {
+          method: "POST",
+        });
+        const data = await res.json();
+        if (data.success) {
+          if (data.warning) alert(data.warning);
+          orderForPrint = data.order ?? { ...order, status: "Hazırlanıyor" };
+          fetchOrders();
+        } else {
+          const openAnyway = window.confirm(
+            `${data.error || "İşleme alınamadı."}\n\nYine de «Paket çıktısı (PDF)» açılsın mı?`
+          );
+          if (!openAnyway) return;
+        }
+      } catch {
+        const openAnyway = window.confirm(
+          "Bağlantı hatası.\n\nYine de «Paket çıktısı (PDF)» açılsın mı?"
+        );
+        if (!openAnyway) return;
       }
-      if (data.warning) alert(data.warning);
-      const updated = data.order ?? { ...order, status: "Hazırlanıyor" };
-      setSelectedOrder(updated);
-      setIsPrintPreviewOpen(true);
-      fetchOrders();
-    } catch {
-      alert("Etiket işlemi sırasında bağlantı hatası.");
     }
+
+    setSelectedOrder(orderForPrint);
+    setIsViewModalOpen(false);
+    setIsPrintPreviewOpen(true);
   };
 
-  const handleTrendyolCargoLabel = async (order: { _id: string; platform?: string }) => {
+  const handleTrendyolCargoLabel = async (order: { _id: string; platform?: string; cargoCompany?: string }) => {
     if (order.platform !== "trendyol") return;
+    if (orderIsDhl(order)) {
+      alert(
+        "DHL kargo Trendyol ortak etiket API'sini kullanmaz.\n\n1) Etiketi DHL eCommerce panelinden yazdırın\n2) Takip numarasını «DHL takip → Trendyol'a ilet» ile gönderin\n3) Paket listesi için «Paket çıktısı (PDF)» kullanın"
+      );
+      void handlePackagePdf(order);
+      return;
+    }
     setTyLabelLoading(true);
     try {
       const res = await fetch(`/api/trendyol/orders/${order._id}/cargo-label`);
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || "Trendyol ortak etiket alınamadı.");
+        const openPdf = window.confirm(
+          `${data.error || "Trendyol ortak etiket alınamadı."}\n\n«Paket çıktısı (PDF)» açılsın mı? (Yerel A4 etiket — her zaman kullanılabilir.)`
+        );
+        if (openPdf) void handlePackagePdf(order);
         return;
       }
       if (data.pdfUrl && /^https?:\/\//i.test(data.pdfUrl)) {
@@ -192,6 +232,38 @@ export default function OrdersPage() {
       alert("Trendyol etiket isteği başarısız.");
     } finally {
       setTyLabelLoading(false);
+    }
+  };
+
+  const submitDhlTrackingToTrendyol = async () => {
+    if (!selectedOrder) return;
+    const tracking = cargoForm.trackingNumber.trim();
+    if (!tracking) {
+      alert("Önce DHL takip numarasını girin.");
+      return;
+    }
+    setTyTrackingLoading(true);
+    try {
+      const res = await fetch(`/api/trendyol/orders/${selectedOrder._id}/tracking`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cargoSenderNumber: tracking }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || "DHL takip Trendyol'a iletilemedi.");
+        return;
+      }
+      if (data.order) setSelectedOrder(data.order);
+      setPageBanner({
+        kind: "success",
+        message: data.message || "DHL takip Trendyol'a iletildi.",
+      });
+      await fetchOrders();
+    } catch {
+      alert("Bağlantı hatası.");
+    } finally {
+      setTyTrackingLoading(false);
     }
   };
 
@@ -576,11 +648,11 @@ export default function OrdersPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handlePrint(order)}
+                      onClick={() => void handlePackagePdf(order)}
                       className="erp-btn erp-btn-primary text-sm py-3"
                     >
                       <Printer size={18} />
-                      Etiket
+                      Paket PDF
                     </button>
                   </div>
                 </article>
@@ -648,20 +720,22 @@ export default function OrdersPage() {
                         >
                           <Eye size={18} />
                         </button>
-                        {order.platform === "trendyol" ? (
+                        {order.platform === "trendyol" && !orderIsDhl(order) ? (
                           <button
                             type="button"
                             onClick={() => void handleTrendyolCargoLabel(order)}
                             disabled={tyLabelLoading}
                             className="p-2 text-slate-500 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors border border-transparent hover:border-orange-100 disabled:opacity-50"
-                            title="Trendyol ortak kargo etiketi (PDF/ZPL)"
+                            title="Trendyol ortak kargo etiketi (TEX/Aras)"
                           >
                             <Tag size={18} />
                           </button>
                         ) : null}
-                        <button 
-                          onClick={() => handlePrint(order)}
-                          className="p-2 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors border border-transparent hover:border-orange-100" title="Etiket Yazdır (işleme al + stok düş)"
+                        <button
+                          type="button"
+                          onClick={() => void handlePackagePdf(order)}
+                          className="p-2 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors border border-transparent hover:border-orange-100"
+                          title="Paket çıktısı (PDF) — A4 yazdır"
                         >
                           <Printer size={18} />
                         </button>
@@ -690,14 +764,36 @@ export default function OrdersPage() {
               {selectedOrder?.platform === "trendyol" &&
               selectedOrder?.status !== "İptal Edildi" &&
               selectedOrder?.status !== "İade Edildi" ? (
+                <>
+                  {!orderIsDhl(selectedOrder) ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleTrendyolCargoLabel(selectedOrder)}
+                      disabled={tyLabelLoading}
+                      className="px-3 py-1.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-lg text-xs font-semibold hover:bg-orange-100 disabled:opacity-50 inline-flex items-center gap-1"
+                    >
+                      <Tag size={14} />
+                      {tyLabelLoading ? "Etiket…" : "Trendyol Ortak Etiket"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void handlePackagePdf(selectedOrder)}
+                    className="px-3 py-1.5 bg-slate-50 text-slate-800 border border-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-100 inline-flex items-center gap-1"
+                  >
+                    <Printer size={14} />
+                    Paket çıktısı (PDF)
+                  </button>
+                </>
+              ) : selectedOrder?.status !== "İptal Edildi" &&
+                selectedOrder?.status !== "İade Edildi" ? (
                 <button
                   type="button"
-                  onClick={() => void handleTrendyolCargoLabel(selectedOrder)}
-                  disabled={tyLabelLoading}
-                  className="px-3 py-1.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-lg text-xs font-semibold hover:bg-orange-100 disabled:opacity-50 inline-flex items-center gap-1"
+                  onClick={() => void handlePackagePdf(selectedOrder)}
+                  className="px-3 py-1.5 bg-slate-50 text-slate-800 border border-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-100 inline-flex items-center gap-1"
                 >
-                  <Tag size={14} />
-                  {tyLabelLoading ? "Etiket…" : "Trendyol Etiket"}
+                  <Printer size={14} />
+                  Paket çıktısı (PDF)
                 </button>
               ) : null}
               {selectedOrder?.status !== "İptal Edildi" &&
@@ -818,15 +914,39 @@ export default function OrdersPage() {
             <div className="rounded-xl border border-slate-200 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h4 className="font-bold text-slate-800">Kargo bilgileri</h4>
-                <button
-                  type="button"
-                  onClick={() => void saveCargoInfo()}
-                  disabled={cargoSaving}
-                  className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
-                >
-                  {cargoSaving ? "Kaydediliyor…" : "Kaydet"}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {selectedOrder?.platform === "trendyol" &&
+                  orderIsDhl(selectedOrder) &&
+                  selectedOrder?.status !== "İptal Edildi" &&
+                  selectedOrder?.status !== "İade Edildi" ? (
+                    <button
+                      type="button"
+                      onClick={() => void submitDhlTrackingToTrendyol()}
+                      disabled={tyTrackingLoading}
+                      className="px-3 py-1.5 bg-yellow-400 text-yellow-950 rounded-lg text-xs font-semibold disabled:opacity-50 hover:bg-yellow-300"
+                    >
+                      {tyTrackingLoading ? "İletiliyor…" : "DHL takip → Trendyol'a ilet"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void saveCargoInfo()}
+                    disabled={cargoSaving}
+                    className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                  >
+                    {cargoSaving ? "Kaydediliyor…" : "Kaydet"}
+                  </button>
+                </div>
               </div>
+              {selectedOrder?.platform === "trendyol" && orderIsDhl(selectedOrder) ? (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-950 leading-relaxed">
+                  <strong>DHL (Trendyol anlaşması):</strong> Resmi kargo etiketini DHL eCommerce
+                  veya Trendyol satıcı panelinden yazdırın. Ortak etiket API bu taşıyıcıda
+                  çalışmaz. DHL&apos;den aldığınız takip numarasını yukarıya girip{" "}
+                  <strong>«DHL takip → Trendyol&apos;a ilet»</strong> ile gönderin. Paket içi
+                  listesi için <strong>Paket çıktısı (PDF)</strong> kullanın.
+                </div>
+              ) : null}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold text-slate-700">Kargo firması</span>
@@ -841,7 +961,7 @@ export default function OrdersPage() {
                   <span className="text-xs font-semibold text-slate-700">Takip no</span>
                   <input
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    placeholder="Kargo takip numarası"
+                    placeholder={orderIsDhl(selectedOrder) ? "DHL takip numarası" : "Kargo takip numarası"}
                     value={cargoForm.trackingNumber}
                     onChange={(e) => setCargoForm({ ...cargoForm, trackingNumber: e.target.value })}
                   />
@@ -970,9 +1090,9 @@ export default function OrdersPage() {
               className="w-full bg-slate-800 p-4 flex justify-between items-center sticky top-0 z-[10001] shadow-md"
             >
               <div className="text-white">
-                <h3 className="font-bold text-lg">Yazdırma Önizleme</h3>
+                <h3 className="font-bold text-lg">Paket çıktısı (PDF)</h3>
                 <p className="text-sm text-slate-300">
-                  Yazdır butonuna tıklayın veya Ctrl+P kullanın
+                  A4 önizleme — Yazdır veya Ctrl+P
                 </p>
               </div>
               <div className="flex space-x-3">

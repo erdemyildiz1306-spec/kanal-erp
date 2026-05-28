@@ -89,15 +89,30 @@ export function resolveTrendyolCargoTrackingFromPackage(
   return '';
 }
 
-/** Ortak etiket yalnızca Trendyol öder (TEX / Aras) taşıyıcılarında geçerlidir. */
-export function isTrendyolCommonLabelCarrier(cargoProviderName: string): boolean {
+/** Trendyol marketplace üzerinden DHL (ortak etiket API yok; DHL paneli + takip bildirimi). */
+export function isTrendyolDhlCargo(cargoProviderName: string): boolean {
   const n = String(cargoProviderName ?? '').toLowerCase();
-  if (!n) return true;
+  return n.includes('dhl') || n.includes('dhlmp');
+}
+
+export function trendyolDhlProviderCode(): string {
+  return 'DHLMP';
+}
+
+/** Satıcının kendi kargo anlaşması (ortak etiket API genelde geçersiz). DHL Trendyol hariç. */
+export function isSellerOwnCargoContract(
+  cargoProviderName: string,
+  trackingNumber?: string
+): boolean {
+  if (isTrendyolDhlCargo(cargoProviderName)) return false;
+  const n = String(cargoProviderName ?? '').toLowerCase();
+  const track = String(trackingNumber ?? '').trim();
+  if (track && /[a-z]/i.test(track)) return true;
   return (
-    n.includes('tex') ||
-    n.includes('trendyol express') ||
-    n.includes('trendyol kargo') ||
-    n.includes('aras')
+    n.includes('mng') ||
+    n.includes('ups') ||
+    n.includes('fedex') ||
+    (n.includes('ptt') && n.includes('satıcı'))
   );
 }
 

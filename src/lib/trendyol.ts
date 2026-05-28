@@ -1276,6 +1276,32 @@ export async function updateTrendyolPackageStatus(input: {
   return response.data;
 }
 
+/** DHL (DHLMP) ve benzeri: kargo takip numarasını Trendyol'a iletir. */
+export async function updateTrendyolShipmentTrackingDetails(input: {
+  sellerId: string;
+  apiKey: string;
+  apiSecret: string;
+  packageId: string;
+  cargoSenderNumber: string;
+  providerCode?: string;
+  returnTrackingNumber?: string;
+}) {
+  const headers = getTrendyolAuthHeader(input.apiKey, input.apiSecret, input.sellerId);
+  const payload: Record<string, string> = {
+    cargoSenderNumber: String(input.cargoSenderNumber).trim(),
+    providerCode: String(input.providerCode ?? 'DHLMP').trim() || 'DHLMP',
+  };
+  if (input.returnTrackingNumber?.trim()) {
+    payload.returnTrackingNumber = input.returnTrackingNumber.trim();
+  }
+  const url = TrendyolEndpoints.shipmentPackageTrackingDetails(
+    input.sellerId,
+    input.packageId
+  );
+  const response = await axios.put(url, payload, { headers, timeout: 90_000 });
+  return response.data;
+}
+
 // Stok ve Fiyat Güncelle (Stok/Fiyat Eşitleme API)
 export async function updateTrendyolStockAndPrice(
   sellerId: string,

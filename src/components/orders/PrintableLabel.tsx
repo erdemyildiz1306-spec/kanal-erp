@@ -34,7 +34,7 @@ export default function PrintableLabel({ order, settings }: PrintableLabelProps)
         
         {/* Başlık (Print ekranında görünür, tasarımda temiz durur) */}
         <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">Kargo Etiketini A4 Yazdır</h1>
+          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">Paket Çıktısı (PDF)</h1>
         </div>
 
         {/* Uyarı Banner'ı */}
