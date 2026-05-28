@@ -1208,6 +1208,42 @@ export async function fetchTrendyolOrdersPaginated(
   }
 }
 
+/** Apigw getShipmentPackages — tek sipariş / paket için güncel cargoTrackingNumber */
+export async function fetchTrendyolShipmentPackages(
+  sellerId: string,
+  apiKey: string,
+  apiSecret: string,
+  params?: {
+    orderNumber?: string;
+    shipmentPackageIds?: string[];
+    page?: number;
+    size?: number;
+  }
+): Promise<Array<Record<string, unknown>>> {
+  const headers = getTrendyolAuthHeader(apiKey, apiSecret, sellerId);
+  const query: Record<string, string | number> = {
+    page: params?.page ?? 0,
+    size: Math.min(Math.max(params?.size ?? 20, 1), 200),
+  };
+  const orderNo = String(params?.orderNumber ?? '').trim();
+  if (orderNo) query.orderNumber = orderNo;
+  const pkgIds = (params?.shipmentPackageIds ?? [])
+    .map((id) => String(id).trim())
+    .filter((id) => /^\d+$/.test(id));
+  if (pkgIds.length === 1) query.shipmentPackageIds = pkgIds[0]!;
+  else if (pkgIds.length > 1) query.shipmentPackageIds = pkgIds.join(',');
+
+  const response = await axios.get(TrendyolEndpoints.shipmentPackages(sellerId), {
+    headers,
+    params: query,
+    timeout: 90_000,
+  });
+  const data = response.data ?? {};
+  return Array.isArray(data.content)
+    ? (data.content as Array<Record<string, unknown>>)
+    : [];
+}
+
 /** Paket statüsünü Trendyol'a bildirir (Picking = işleme alındı). */
 export async function updateTrendyolPackageStatus(input: {
   sellerId: string;

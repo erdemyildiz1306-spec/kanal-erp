@@ -25,6 +25,14 @@ export async function GET(
     return NextResponse.json({ success: true, ...result });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Sunucu hatası';
-    return NextResponse.json({ success: false, error: message }, { status: 400 });
+    const isTrendyol =
+      message.includes('HTTP ') ||
+      message.includes('Trendyol') ||
+      message.includes('cargoTracking') ||
+      message.includes('kargo');
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: isTrendyol ? 502 : 400 }
+    );
   }
 }

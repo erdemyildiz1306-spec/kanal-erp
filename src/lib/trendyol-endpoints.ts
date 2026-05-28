@@ -56,9 +56,12 @@ export const TrendyolEndpoints = {
   /** Stok ve fiyat güncelleme */
   priceAndInventory: (supplierId: string) =>
     `${TRENDYOL_SAPIGW}/suppliers/${supplierId}/products/price-and-inventory`,
-  /** Sipariş paketleri */
+  /** Sipariş paketleri (sapigw — toplu liste) */
   supplierOrders: (supplierId: string) =>
     `${TRENDYOL_SAPIGW}/suppliers/${supplierId}/orders`,
+  /** getShipmentPackages — apigw (orderNumber / shipmentPackageIds) */
+  shipmentPackages: (sellerId: string) =>
+    `${TRENDYOL_ORDER_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/orders`,
   /** Paket statü bildirimi (Picking / Invoiced) */
   shipmentPackageUpdate: (sellerId: string, packageId: string) =>
     `${TRENDYOL_ORDER_INTEGRATION}/sellers/${encodeURIComponent(sellerId)}/shipment-packages/${encodeURIComponent(packageId)}`,
