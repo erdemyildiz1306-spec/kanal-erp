@@ -18,12 +18,13 @@ import {
 } from '@/lib/trendyol-efaturam';
 import { calculateInvoiceTotals } from '@/lib/invoice-math';
 
-type OrderDoc = {
+export type OrderDoc = {
   _id: unknown;
   orderNumber: string;
   platform: string;
   status: string;
   packageId?: string;
+  platformOrderId?: string;
   customerName?: string;
   customerAddress?: string;
   totalAmount?: number;
@@ -34,7 +35,9 @@ type OrderDoc = {
     lineId?: string;
   }>;
   trendyolMeta?: Record<string, unknown>;
+  storeMeta?: Record<string, unknown>;
   trendyolInvoice?: Record<string, unknown>;
+  storeInvoice?: Record<string, unknown>;
 };
 
 export async function loadEfaturamSettingsFromDb(): Promise<EfaturamSettings | null> {
@@ -72,6 +75,26 @@ function parseCustomerName(full: string): { name: string; surname: string } {
 }
 
 function extractRecipientFromOrder(order: OrderDoc) {
+  if (order.platform === 'web') {
+    const meta = (order.storeMeta ?? {}) as Record<string, string>;
+    const { name, surname } = parseCustomerName(order.customerName || meta.customerName || '');
+    const taxId = String(meta.taxId ?? meta.invoiceTaxNumber ?? meta.customerTaxId ?? '')
+      .replace(/\D/g, '');
+    const cityDistrict = String(order.customerAddress ?? meta.address ?? '').split('/');
+    return {
+      taxId: taxId.length >= 10 ? taxId : '11111111111',
+      name,
+      surname,
+      title: String(meta.companyName ?? meta.company ?? '').trim() || undefined,
+      city: String(meta.city ?? cityDistrict[1]?.trim() ?? 'İstanbul').trim() || 'İstanbul',
+      district: String(meta.district ?? cityDistrict[0]?.trim() ?? '').trim() || undefined,
+      address: String(meta.address ?? order.customerAddress ?? '').trim() || undefined,
+      email: String(meta.email ?? meta.customerEmail ?? '').trim() || undefined,
+      phone: String(meta.phone ?? meta.customerPhone ?? '').replace(/\D/g, '') || undefined,
+      taxOffice: String(meta.taxOffice ?? '').trim() || undefined,
+    };
+  }
+
   const meta = order.trendyolMeta ?? {};
   const invoiceAddr = (meta.invoiceAddress ?? {}) as Record<string, string>;
   const shipAddr = (meta.shipmentAddress ?? {}) as Record<string, string>;
@@ -103,7 +126,10 @@ async function nextInvoiceSequence(prefix: string): Promise<number> {
   const year = new Date().getFullYear();
   const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${year}`);
   const count = await Order.countDocuments({
-    'trendyolInvoice.invoiceNumber': { $regex: re },
+    $or: [
+      { 'trendyolInvoice.invoiceNumber': { $regex: re } },
+      { 'storeInvoice.invoiceNumber': { $regex: re } },
+    ],
   });
   return count + 1;
 }

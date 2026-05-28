@@ -3,6 +3,7 @@ import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
 import { findProductBySkuOrBarcode } from '@/lib/inventory';
+import { buildStoreMetaFromPayload } from '@/lib/store-order-meta';
 
 function joinUrl(base: string, path: string): string {
   const b = base.trim().replace(/\/?$/, '/');
@@ -91,6 +92,8 @@ export async function GET() {
         totalAmount = orderItems.reduce((a, i) => a + i.totalPrice, 0);
       }
 
+      const storeMeta = buildStoreMetaFromPayload(row);
+
       await Order.findOneAndUpdate(
         { orderNumber },
         {
@@ -104,6 +107,7 @@ export async function GET() {
             costAmount,
             profitAmount: totalAmount - costAmount,
             platformOrderId: String(row.platformOrderId ?? row.id ?? ''),
+            ...(storeMeta ? { storeMeta } : {}),
           },
         },
         { upsert: true }

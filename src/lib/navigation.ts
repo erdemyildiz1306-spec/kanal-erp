@@ -13,6 +13,7 @@ import {
   UserCircle,
   LineChart,
   FileText,
+  Store,
   type LucideIcon,
 } from "lucide-react";
 
@@ -36,6 +37,7 @@ export const secondaryNav: NavItem[] = [
   { name: "Müşteriler", href: "/customers", icon: UserCircle },
   { name: "Fatura & KDV", href: "/invoices", icon: Receipt },
   { name: "Trendyol Fatura", href: "/invoices/trendyol", icon: FileText },
+  { name: "Mağaza Fatura", href: "/invoices/store", icon: Store },
   { name: "Cari & Kasa", href: "/cari", icon: Wallet },
   { name: "Raporlar", href: "/reports", icon: BarChart3 },
   { name: "İşlem Günlüğü", href: "/activity-log", icon: ClipboardList },

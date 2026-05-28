@@ -130,6 +130,18 @@ export async function PUT(request: Request) {
     if (data.webApiPushUrl !== undefined) {
       doc.set('webApiPushUrl', String(data.webApiPushUrl ?? '').trim());
     }
+    if (data.webApiInvoicePath !== undefined) {
+      doc.set(
+        'webApiInvoicePath',
+        String(data.webApiInvoicePath ?? 'orders/invoice').trim() || 'orders/invoice'
+      );
+    }
+    if (data.webApiInvoicePushUrl !== undefined) {
+      doc.set('webApiInvoicePushUrl', String(data.webApiInvoicePushUrl ?? '').trim());
+    }
+    if (data.storeAutoMarkInvoiced !== undefined) {
+      doc.set('storeAutoMarkInvoiced', Boolean(data.storeAutoMarkInvoiced));
+    }
     if (data.storeName !== undefined) {
       doc.set('storeName', String(data.storeName ?? ''));
     }
@@ -362,6 +374,11 @@ export async function PUT(request: Request) {
           String(doc.get('publicAppUrl') ?? '').trim() ||
           getEffectivePublicAppUrl(''),
         webApiUrl: String(doc.get('webApiUrl') ?? '').trim(),
+        webApiStockPath: String(doc.get('webApiStockPath') ?? 'stock-price').trim(),
+        webApiPushUrl: String(doc.get('webApiPushUrl') ?? '').trim(),
+        webApiInvoicePath: String(doc.get('webApiInvoicePath') ?? 'orders/invoice').trim(),
+        webApiInvoicePushUrl: String(doc.get('webApiInvoicePushUrl') ?? '').trim(),
+        storeAutoMarkInvoiced: Boolean(doc.get('storeAutoMarkInvoiced') ?? true),
         storeName: String(doc.get('storeName') ?? '').trim(),
       },
     });

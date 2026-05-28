@@ -14,6 +14,8 @@ export type StorePushSettings = {
   webApiUrl: string;
   webApiStockPath: string;
   webApiPushUrl: string;
+  webApiInvoicePath: string;
+  webApiInvoicePushUrl: string;
 };
 
 export function readStorePushSettings(doc: {
@@ -23,6 +25,9 @@ export function readStorePushSettings(doc: {
     webApiUrl: String(doc.get('webApiUrl') ?? '').trim(),
     webApiStockPath: String(doc.get('webApiStockPath') ?? 'stock-price').trim() || 'stock-price',
     webApiPushUrl: String(doc.get('webApiPushUrl') ?? '').trim(),
+    webApiInvoicePath:
+      String(doc.get('webApiInvoicePath') ?? 'orders/invoice').trim() || 'orders/invoice',
+    webApiInvoicePushUrl: String(doc.get('webApiInvoicePushUrl') ?? '').trim(),
   };
 }
 
@@ -39,5 +44,16 @@ export function resolveStorePushEndpoint(settings: StorePushSettings): string {
 
   base = base.replace(/\/+$/, '');
   const path = settings.webApiStockPath.replace(/^\//, '');
+  return joinUrl(`${base}/`, path);
+}
+
+/** Mağazaya fatura bildirimi — tam URL veya taban + yol */
+export function resolveStoreInvoiceEndpoint(settings: StorePushSettings): string {
+  if (settings.webApiInvoicePushUrl) {
+    return settings.webApiInvoicePushUrl;
+  }
+  const base = settings.webApiUrl.replace(/\/+$/, '');
+  if (!base) return '';
+  const path = settings.webApiInvoicePath.replace(/^\//, '');
   return joinUrl(`${base}/`, path);
 }

@@ -32,6 +32,12 @@ const SettingSchema = new mongoose.Schema({
   webApiStockPath: { type: String, default: 'stock-price' },
   /** Doluysa taban+yol yerine doğrudan bu URL kullanılır (özel yazılım) */
   webApiPushUrl: { type: String, default: '' },
+  /** Mağazaya fatura bildirimi — taban URL'ye eklenen yol (varsayılan orders/invoice) */
+  webApiInvoicePath: { type: String, default: 'orders/invoice' },
+  /** Doluysa fatura bildirimi doğrudan bu URL'ye POST edilir */
+  webApiInvoicePushUrl: { type: String, default: '' },
+  /** Fatura mağazaya iletilince ERP sipariş durumunu güncelle */
+  storeAutoMarkInvoiced: { type: Boolean, default: true },
 
   storeName: { type: String, default: 'Stok ERP' },
   printPackageContents: { type: Boolean, default: true },

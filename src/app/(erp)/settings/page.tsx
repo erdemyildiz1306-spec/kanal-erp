@@ -31,6 +31,11 @@ type SettingsPayload = {
   trendyolApiKey?: string;
   trendyolApiSecret?: string;
   webApiUrl?: string;
+  webApiStockPath?: string;
+  webApiPushUrl?: string;
+  webApiInvoicePath?: string;
+  webApiInvoicePushUrl?: string;
+  storeAutoMarkInvoiced?: boolean;
   trendyolBrandId?: string;
   trendyolBrandName?: string;
   trendyolStockDeductAt?: string;
@@ -90,6 +95,11 @@ function emptyIntegrationDefaults(): SettingsPayload {
     trendyolApiKey: "",
     trendyolApiSecret: "",
     webApiUrl: "",
+    webApiStockPath: "stock-price",
+    webApiPushUrl: "",
+    webApiInvoicePath: "orders/invoice",
+    webApiInvoicePushUrl: "",
+    storeAutoMarkInvoiced: true,
     webApiToken: "",
     trendyolBrandId: "",
     trendyolBrandName: "",
@@ -334,6 +344,14 @@ export default function SettingsPage() {
         trendyolApiKey: "",
         trendyolApiSecret: "",
         webApiUrl: (s.webApiUrl as string) || cached.webApiUrl || "",
+        webApiStockPath:
+          (s.webApiStockPath as string) || cached.webApiStockPath || "stock-price",
+        webApiPushUrl: (s.webApiPushUrl as string) || cached.webApiPushUrl || "",
+        webApiInvoicePath:
+          (s.webApiInvoicePath as string) || cached.webApiInvoicePath || "orders/invoice",
+        webApiInvoicePushUrl:
+          (s.webApiInvoicePushUrl as string) || cached.webApiInvoicePushUrl || "",
+        storeAutoMarkInvoiced: s.storeAutoMarkInvoiced !== false,
         webApiToken: "",
         storeName: (s.storeName as string) || cached.storeName || "",
         printPackageContents: Boolean(
@@ -460,6 +478,11 @@ export default function SettingsPage() {
       /** Boş string göndermez: sunucuda mevcut değeri koruma + merge */
       const payload: SettingsPayload = {
         webApiUrl: integration.webApiUrl,
+        webApiStockPath: integration.webApiStockPath,
+        webApiPushUrl: integration.webApiPushUrl,
+        webApiInvoicePath: integration.webApiInvoicePath,
+        webApiInvoicePushUrl: integration.webApiInvoicePushUrl,
+        storeAutoMarkInvoiced: integration.storeAutoMarkInvoiced !== false,
         storeName: integration.storeName,
         printPackageContents: integration.printPackageContents,
         companyLegalTitle: integration.companyLegalTitle,
@@ -1211,7 +1234,7 @@ export default function SettingsPage() {
               <div className="border-b border-slate-100 pb-4">
                 <h3 className="text-lg font-bold text-slate-900">Next.js Mağaza API</h3>
                 <p className="text-sm text-slate-500">
-                  Örneğin storefront&apos;tan stok güncelleme veya webhook için taban URL ve bearer token (siz tanımlayın).
+                  Özel mağazanızdan sipariş çekme, stok/fiyat gönderme ve fatura bildirimi için taban URL ve token.
                 </p>
               </div>
 
@@ -1224,6 +1247,7 @@ export default function SettingsPage() {
                   placeholder="https://magaza.example.com/api/"
                   className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
                 />
+                <p className="text-xs text-slate-500">Stok ve fatura uç noktaları bu adrese göre birleştirilir.</p>
               </div>
 
               <div className="space-y-1.5">
@@ -1235,6 +1259,88 @@ export default function SettingsPage() {
                   placeholder="Kayıtlıysa güncellenmez; sıfırlamak için yeni değer girin"
                   className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
                 />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Stok/fiyat yolu</label>
+                  <input
+                    type="text"
+                    value={integration.webApiStockPath ?? "stock-price"}
+                    onChange={(e) =>
+                      setIntegration({ ...integration, webApiStockPath: e.target.value })
+                    }
+                    placeholder="stock-price"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+                  />
+                  <p className="text-xs text-slate-500">Varsayılan: taban + stock-price</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Stok tam URL (opsiyonel)
+                  </label>
+                  <input
+                    type="text"
+                    value={integration.webApiPushUrl ?? ""}
+                    onChange={(e) => setIntegration({ ...integration, webApiPushUrl: e.target.value })}
+                    placeholder="https://magaza.example.com/api/inventory/push"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-4 space-y-4">
+                <h4 className="font-semibold text-slate-800">Fatura bildirimi</h4>
+                <p className="text-sm text-slate-500">
+                  Kesilen fatura ERP&apos;den mağazanıza POST ile iletilir. Mağaza tarafında siparişe fatura linki
+                  veya PDF ekleyebilirsiniz.
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Fatura yolu</label>
+                    <input
+                      type="text"
+                      value={integration.webApiInvoicePath ?? "orders/invoice"}
+                      onChange={(e) =>
+                        setIntegration({ ...integration, webApiInvoicePath: e.target.value })
+                      }
+                      placeholder="orders/invoice"
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Fatura tam URL (opsiyonel)
+                    </label>
+                    <input
+                      type="text"
+                      value={integration.webApiInvoicePushUrl ?? ""}
+                      onChange={(e) =>
+                        setIntegration({ ...integration, webApiInvoicePushUrl: e.target.value })
+                      }
+                      placeholder="https://magaza.example.com/api/orders/invoice"
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={integration.storeAutoMarkInvoiced !== false}
+                    onChange={(e) =>
+                      setIntegration({ ...integration, storeAutoMarkInvoiced: e.target.checked })
+                    }
+                    className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                  />
+                  <div>
+                    <span className="block text-sm font-semibold text-slate-800">
+                      Fatura gönderildikten sonra siparişi faturalandı say
+                    </span>
+                    <span className="block text-xs text-slate-400">
+                      Mağaza sipariş durumu ERP&apos;de &quot;Kargolandı&quot; olarak güncellenir.
+                    </span>
+                  </div>
+                </label>
               </div>
             </div>
           )}

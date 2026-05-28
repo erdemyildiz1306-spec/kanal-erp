@@ -10,6 +10,7 @@ import {
   pushStockAfterOrder,
   verifyStoreWebhookSecret,
 } from '@/lib/channel-sync';
+import { buildStoreMetaFromPayload } from '@/lib/store-order-meta';
 
 /** Trendyol veya özel web sitesinden gelen sipariş bildirimleri (Webhook). */
 export async function POST(request: Request) {
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
 
     const isTrendyol = platform === 'trendyol';
     const initialStatus = isTrendyol ? 'Beklemede' : 'Yeni';
+    const storeMeta = !isTrendyol ? buildStoreMetaFromPayload(data as Record<string, unknown>) : null;
 
     const newOrder = new Order({
       orderNumber,
@@ -97,6 +99,7 @@ export async function POST(request: Request) {
       cargoLabelUrl: data.cargoLabelUrl || '',
       platformOrderId: data.platformOrderId || '',
       stockApplied: false,
+      ...(storeMeta ? { storeMeta } : {}),
     });
 
     await newOrder.save();
