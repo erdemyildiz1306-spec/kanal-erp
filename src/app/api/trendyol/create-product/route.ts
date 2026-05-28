@@ -22,6 +22,7 @@ import {
 } from '@/lib/trendyol-attributes';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
 import {
+  getEffectivePublicAppUrl,
   resolveTrendyolImageUrls,
   trendyolImagePublishError,
 } from '@/lib/public-image-url';
@@ -179,7 +180,9 @@ export async function POST(request: Request) {
     const settings = await getTrendyolSettings();
     const brandId = await resolveTrendyolBrandId(settings);
     const settingsDoc = await resolveSingletonSettingDocument();
-    const publicAppUrl = String(settingsDoc.get('publicAppUrl') ?? '').trim();
+    const publicAppUrl = getEffectivePublicAppUrl(
+      String(settingsDoc.get('publicAppUrl') ?? '')
+    );
     const listPrice = Math.max(0, Number(product.price) || 0);
     const salePrice = Math.max(0, Number(product.prices?.trendyol) || listPrice);
 

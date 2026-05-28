@@ -309,7 +309,10 @@ export default function SettingsPage() {
             ? Number(s.trendyolWebhookCoalesceSeconds)
             : 180,
         publicAppUrl:
-          (s.publicAppUrl as string) || cached.publicAppUrl || "",
+          (typeof data.effectivePublicAppUrl === "string" &&
+          data.effectivePublicAppUrl.trim() !== ""
+            ? data.effectivePublicAppUrl.trim()
+            : (s.publicAppUrl as string) || cached.publicAppUrl || ""),
       };
       setIntegration(next);
       setFinanceForm(financeSettingsFromApi(s));
@@ -907,14 +910,14 @@ export default function SettingsPage() {
                   onChange={(e) =>
                     setIntegration({ ...integration, publicAppUrl: e.target.value })
                   }
-                  placeholder="https://sizin-app.up.railway.app"
+                  placeholder="https://erp-stok.vercel.app"
                   className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
                 />
                 <p className="text-xs text-slate-500">
-                  Yerel bilgisayarda yüklenen görseller Trendyol&apos;a gitmez. Canlı mağaza /
-                  Railway HTTPS adresinizi yazın; görseller{" "}
-                  <span className="font-mono">/uploads/…</span> ile birleştirilir. Alternatif:
-                  ürün formunda doğrudan CDN HTTPS linki yapıştırın.
+                  Canlı ERP adresiniz. Boş bırakılırsa{" "}
+                  <span className="font-mono">https://erp-stok.vercel.app</span> kullanılır.
+                  Ürün görselleri «Görsel seç» ile Vercel Blob&apos;a yüklenir; Trendyol bu
+                  HTTPS linkleri doğrudan alır.
                 </p>
               </div>
 

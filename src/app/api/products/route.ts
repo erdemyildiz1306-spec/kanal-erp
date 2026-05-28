@@ -3,6 +3,27 @@ import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { deleteProductsWithCleanup } from '@/lib/product-delete';
+import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import {
+  getEffectivePublicAppUrl,
+  resolveTrendyolImageUrls,
+} from '@/lib/public-image-url';
+
+async function buildProductImagesPayload(
+  raw: unknown
+): Promise<Array<{ url: string; sortOrder: number }>> {
+  if (!Array.isArray(raw)) return [];
+  const settingsDoc = await resolveSingletonSettingDocument();
+  const base = getEffectivePublicAppUrl(String(settingsDoc.get('publicAppUrl') ?? ''));
+  const out: Array<{ url: string; sortOrder: number }> = [];
+  raw.forEach((img: { url?: string }, i: number) => {
+    const trimmed = String(img?.url ?? '').trim();
+    if (!trimmed) return;
+    const { ok } = resolveTrendyolImageUrls([trimmed], base);
+    out.push({ url: ok[0] ?? trimmed, sortOrder: i });
+  });
+  return out;
+}
 
 function normalizeTyAttributesFromClient(data: unknown): Array<{
   attributeId: number;
@@ -113,14 +134,7 @@ export async function POST(request: Request) {
         )
       : [];
 
-    const imagesPayload = Array.isArray(data.images)
-      ? data.images
-          .map((img: { url?: string }, i: number) => ({
-            url: String(img?.url ?? '').trim(),
-            sortOrder: i,
-          }))
-          .filter((img: { url: string }) => img.url.length > 0)
-      : [];
+    const imagesPayload = await buildProductImagesPayload(data.images);
 
     if (!data.name?.trim()) {
       return NextResponse.json(
@@ -363,14 +377,7 @@ export async function PUT(request: Request) {
       colorLabel: String(v.colorLabel ?? '').trim(),
     }));
 
-    const imagesPayload = Array.isArray(data.images)
-      ? data.images
-          .map((img: { url?: string }, i: number) => ({
-            url: String(img?.url ?? '').trim(),
-            sortOrder: i,
-          }))
-          .filter((img: { url: string }) => img.url.length > 0)
-      : [];
+    const imagesPayload = await buildProductImagesPayload(data.images);
 
     let sku = data.sku !== undefined ? String(data.sku).trim() : product.sku;
     let barcode =

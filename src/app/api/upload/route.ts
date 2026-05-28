@@ -7,6 +7,7 @@ import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
 import {
   isTrendyolPublicImageUrl,
   toAbsolutePublicUrl,
+  getEffectivePublicAppUrl,
 } from '@/lib/public-image-url';
 
 export const runtime = 'nodejs';
@@ -48,17 +49,34 @@ export async function POST(request: Request) {
             : 'jpg';
     const name = `products/${Date.now()}-${randomBytes(6).toString('hex')}.${ext}`;
 
+    const settingsDoc = await resolveSingletonSettingDocument();
+    const imageBase = getEffectivePublicAppUrl(
+      String(settingsDoc.get('publicAppUrl') ?? '')
+    );
+
     let publicUrl: string;
     let absoluteUrl: string;
 
     if (isVercelRuntime() || process.env.BLOB_READ_WRITE_TOKEN) {
-      const blob = await put(name, file, {
-        access: 'public',
-        addRandomSuffix: false,
-        contentType: file.type,
-      });
-      publicUrl = blob.url;
-      absoluteUrl = blob.url;
+      try {
+        const blob = await put(name, file, {
+          access: 'public',
+          addRandomSuffix: false,
+          contentType: file.type,
+        });
+        publicUrl = blob.url;
+        absoluteUrl = blob.url;
+      } catch (blobErr: unknown) {
+        const msg = blobErr instanceof Error ? blobErr.message : String(blobErr);
+        return NextResponse.json(
+          {
+            error:
+              'Vercel Blob yükleme başarısız. Vercel projesinde Storage > Blob store oluşturup BLOB_READ_WRITE_TOKEN tanımlayın. ' +
+              (msg ? `(${msg})` : ''),
+          },
+          { status: 503 }
+        );
+      }
     } else if (canUseLocalUploads()) {
       const buf = Buffer.from(await file.arrayBuffer());
       const fileName = name.replace(/^products\//, '');
@@ -67,8 +85,6 @@ export async function POST(request: Request) {
       const fsPath = path.join(dir, fileName);
       await writeFile(fsPath, buf);
       publicUrl = `/uploads/products/${fileName}`;
-      const settingsDoc = await resolveSingletonSettingDocument();
-      const imageBase = String(settingsDoc.get('publicAppUrl') ?? '').trim();
       absoluteUrl = toAbsolutePublicUrl(publicUrl, imageBase);
     } else {
       return NextResponse.json(
@@ -80,8 +96,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const settingsDoc = await resolveSingletonSettingDocument();
-    const imageBase = String(settingsDoc.get('publicAppUrl') ?? '').trim();
     if (!absoluteUrl.startsWith('http')) {
       absoluteUrl = toAbsolutePublicUrl(publicUrl, imageBase);
     }
@@ -89,7 +103,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      url: absoluteUrl.startsWith('http') ? absoluteUrl : publicUrl,
+      url: absoluteUrl,
       absoluteUrl,
       trendyolReady,
       storage: isVercelRuntime() || process.env.BLOB_READ_WRITE_TOKEN ? 'blob' : 'local',

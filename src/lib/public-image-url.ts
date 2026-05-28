@@ -1,5 +1,7 @@
 /** Trendyol yayımlama — herkese açık HTTPS görsel adresleri */
 
+export const DEFAULT_PRODUCTION_APP_URL = 'https://erp-stok.vercel.app';
+
 export function resolvePublicAppBaseUrl(override?: string): string {
   const fromOverride = String(override ?? '').trim();
   if (fromOverride) {
@@ -24,12 +26,31 @@ export function resolvePublicAppBaseUrl(override?: string): string {
   return '';
 }
 
+/** Ayarlar + ortam değişkenlerinden Trendyol görsel tabanı (canlı Vercel yedek). */
+export function getEffectivePublicAppUrl(settingsUrl?: string): string {
+  const fromSettings = resolvePublicAppBaseUrl(settingsUrl);
+  if (fromSettings) return fromSettings;
+  if (process.env.VERCEL) {
+    return resolvePublicAppBaseUrl() || DEFAULT_PRODUCTION_APP_URL;
+  }
+  return '';
+}
+
+export function isVercelBlobImageUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host.includes('blob.vercel-storage.com') || host.includes('public.blob.vercel-storage.com');
+  } catch {
+    return false;
+  }
+}
+
 export function toAbsolutePublicUrl(url: string, baseOverride?: string): string {
   const u = String(url ?? '').trim();
   if (!u) return '';
   if (/^https?:\/\//i.test(u)) return u;
 
-  const base = resolvePublicAppBaseUrl(baseOverride);
+  const base = getEffectivePublicAppUrl(baseOverride);
   if (!base) {
     const fallback =
       typeof window !== 'undefined'
@@ -65,12 +86,19 @@ export function resolveTrendyolImageUrls(
   rawUrls: string[],
   baseOverride?: string
 ): { ok: string[]; bad: string[] } {
+  const base = getEffectivePublicAppUrl(baseOverride);
   const ok: string[] = [];
   const bad: string[] = [];
   for (const raw of rawUrls) {
-    const abs = toAbsolutePublicUrl(raw, baseOverride);
+    const trimmed = String(raw ?? '').trim();
+    if (!trimmed) continue;
+    if (isVercelBlobImageUrl(trimmed) && isTrendyolPublicImageUrl(trimmed)) {
+      ok.push(trimmed);
+      continue;
+    }
+    const abs = toAbsolutePublicUrl(trimmed, base);
     if (!abs || !isTrendyolPublicImageUrl(abs)) {
-      bad.push(raw.trim() || abs);
+      bad.push(trimmed || abs);
     } else {
       ok.push(abs);
     }
@@ -78,23 +106,32 @@ export function resolveTrendyolImageUrls(
   return { ok, bad };
 }
 
+/** Kayıt öncesi görselleri mümkünse tam HTTPS adrese çevirir. */
+export function normalizeProductImageUrls(
+  rawUrls: string[],
+  baseOverride?: string
+): string[] {
+  const { ok } = resolveTrendyolImageUrls(rawUrls, baseOverride);
+  return ok;
+}
+
 export function trendyolImagePublishError(
   badUrls: string[],
   baseOverride?: string
 ): string {
-  const base = resolvePublicAppBaseUrl(baseOverride);
+  const base = getEffectivePublicAppUrl(baseOverride);
   const sample = badUrls.slice(0, 2).join(', ');
   if (!base) {
     return (
-      'Trendyol görselleri herkese açık HTTPS adresi olmalı (localhost kabul etmez). ' +
-      'Çözüm: Ayarlar > Trendyol bölümünde «Yayımlama adresi (HTTPS)» alanına Railway / mağaza adresinizi yazın ' +
-      '(ör. https://sizin-app.up.railway.app) ve kaydedin; veya görsel satırına doğrudan CDN HTTPS linki yapıştırın.' +
+      'Trendyol görselleri herkese açık HTTPS adresi olmalı. ' +
+      'Ayarlar > Trendyol > «Yayımlama adresi (HTTPS)» alanına canlı site adresinizi yazın ' +
+      '(ör. https://erp-stok.vercel.app) veya görseli «Görsel seç» ile yükleyin / CDN HTTPS linki yapıştırın.' +
       (sample ? ` Sorunlu: ${sample}` : '')
     );
   }
   return (
-    'Trendyol görselleri herkese açık HTTPS olmalı. Yayımlama adresiniz tanımlı ama görseller hâlâ yerel görünüyor — ' +
-    'görseli yeniden yükleyin veya tam HTTPS URL yapıştırın (cdn.trendyol.com, imgix vb.).' +
+    'Trendyol görselleri herkese açık HTTPS olmalı. Canlı sitede «Görsel seç» ile yükleyin (Vercel Blob) ' +
+    'veya tam HTTPS CDN linki yapıştırın. Eski /uploads/… yollarını yeniden yükleyin.' +
     (sample ? ` Sorunlu: ${sample}` : '')
   );
 }

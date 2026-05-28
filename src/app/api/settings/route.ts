@@ -8,6 +8,10 @@ import {
 } from '@/lib/trendyol';
 import { randomBytes } from 'crypto';
 import { requireSession } from '@/lib/auth';
+import {
+  DEFAULT_PRODUCTION_APP_URL,
+  getEffectivePublicAppUrl,
+} from '@/lib/public-image-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +41,15 @@ export async function GET() {
   try {
     let doc = await resolveSingletonSettingDocument();
 
+    let publicAppUrlStored = String(doc.get('publicAppUrl') ?? '').trim();
+    if (!publicAppUrlStored && process.env.VERCEL) {
+      publicAppUrlStored = getEffectivePublicAppUrl('');
+      if (publicAppUrlStored) {
+        doc.set('publicAppUrl', publicAppUrlStored);
+        await doc.save();
+      }
+    }
+
     /** Kimlik doğrulanmış değil; yalnızca “doluluk” ipuçları */
     const integrationHints = buildIntegrationHints(doc);
 
@@ -44,11 +57,14 @@ export async function GET() {
     delete (o as { trendyolApiKey?: string }).trendyolApiKey;
     delete (o as { trendyolApiSecret?: string }).trendyolApiSecret;
     delete (o as { webApiToken?: string }).webApiToken;
+    (o as { publicAppUrl?: string }).publicAppUrl =
+      publicAppUrlStored || String((o as { publicAppUrl?: string }).publicAppUrl ?? '');
 
     return NextResponse.json(
       {
         success: true,
         settings: o,
+        effectivePublicAppUrl: getEffectivePublicAppUrl(publicAppUrlStored),
         keysMasked: true,
         integrationHints,
         database: {
@@ -187,7 +203,11 @@ export async function PUT(request: Request) {
       doc.set('trendyolWebhookSecret', webhookSecretGenerated);
     }
     if (data.publicAppUrl !== undefined) {
-      doc.set('publicAppUrl', String(data.publicAppUrl ?? '').trim());
+      let url = String(data.publicAppUrl ?? '').trim();
+      if (!url && process.env.VERCEL) {
+        url = getEffectivePublicAppUrl('') || DEFAULT_PRODUCTION_APP_URL;
+      }
+      doc.set('publicAppUrl', url);
     }
 
     if (data.financeDefaultCommissionPct !== undefined) {
@@ -283,7 +303,9 @@ export async function PUT(request: Request) {
         ...(webhookSecretGenerated
           ? { trendyolWebhookSecret: webhookSecretGenerated }
           : {}),
-        publicAppUrl: String(doc.get('publicAppUrl') ?? '').trim(),
+        publicAppUrl:
+          String(doc.get('publicAppUrl') ?? '').trim() ||
+          getEffectivePublicAppUrl(''),
         webApiUrl: String(doc.get('webApiUrl') ?? '').trim(),
         storeName: String(doc.get('storeName') ?? '').trim(),
       },

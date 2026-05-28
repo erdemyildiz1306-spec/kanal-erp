@@ -509,9 +509,15 @@ export default function ProductsPage() {
       .catch(() => {});
     void fetch("/api/settings?t=" + Date.now(), { cache: "no-store" })
       .then((r) => r.json())
-      .then((d: { success?: boolean; settings?: { publicAppUrl?: string } }) => {
-        if (d.success && d.settings) {
-          setPublicAppUrl(String(d.settings.publicAppUrl ?? "").trim());
+      .then((d: {
+        success?: boolean;
+        settings?: { publicAppUrl?: string };
+        effectivePublicAppUrl?: string;
+      }) => {
+        if (d.success) {
+          setPublicAppUrl(
+            String(d.effectivePublicAppUrl ?? d.settings?.publicAppUrl ?? "").trim()
+          );
         }
       })
       .catch(() => {});
@@ -783,8 +789,13 @@ export default function ProductsPage() {
 
   const buildProductPayload = (): Record<string, unknown> => {
     const imagesPayload = images
-      .map((i) => ({ url: i.url.trim() }))
-      .filter((i) => i.url.length > 0);
+      .map((i) => {
+        const trimmed = i.url.trim();
+        if (!trimmed) return null;
+        const { ok } = resolveTrendyolImageUrls([trimmed], publicAppUrl);
+        return { url: ok[0] ?? trimmed };
+      })
+      .filter((i): i is { url: string } => Boolean(i?.url));
 
     const variantsPayload = productData.hasVariants
       ? variants
@@ -3357,19 +3368,20 @@ export default function ProductsPage() {
                   </button>
                 </div>
                 <p className="text-xs text-slate-500">
-                  Bilgisayardan yükleyin veya aşağıya{" "}
-                  <strong>https://</strong> ile başlayan CDN / mağaza linki yapıştırın.
-                  Yerel <span className="font-mono">localhost</span> Trendyol&apos;a
-                  gönderilmez.
+                  Canlı sitede «Görsel seç» ile yükleyin — dosyalar Vercel Blob&apos;a
+                  kaydedilir ve Trendyol&apos;a HTTPS link olarak gider. İsterseniz doğrudan{" "}
+                  <strong>https://</strong> CDN linki de yapıştırabilirsiniz.
                 </p>
                 {!publicAppUrl ? (
                   <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                    Yayımlama adresi tanımlı değil.{" "}
-                    <strong>Ayarlar → Trendyol → Yayımlama adresi (HTTPS)</strong> alanına
-                    canlı site adresinizi yazın veya görsel satırına doğrudan HTTPS URL
-                    girin.
+                    Yayımlama adresi henüz kayıtlı değil; canlı sitede otomatik
+                    doldurulacak. «Görsel seç» ile yüklemeniz yeterli (Blob HTTPS).
                   </p>
-                ) : null}
+                ) : (
+                  <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+                    Görsel yayımlama adresi: <span className="font-mono">{publicAppUrl}</span>
+                  </p>
+                )}
                 <div className="space-y-2">
                   {images.map((im, idx) => (
                     <div
@@ -3411,7 +3423,7 @@ export default function ProductsPage() {
                         </label>
                         <input
                           type="url"
-                          placeholder="https://cdn… veya /uploads/products/…"
+                          placeholder="https://… (Blob veya CDN)"
                           value={im.url}
                           onChange={(e) =>
                             setImages((prev) => {
