@@ -11,11 +11,18 @@ import {
   Building2,
   Mail,
   Download,
+  TrendingUp,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Spinner from "@/components/ui/Spinner";
 import MobileAccordion from "@/components/ui/MobileAccordion";
 import { useToast } from "@/components/providers/ToastProvider";
+import FinanceSettingsPanel, {
+  defaultFinanceSettingsForm,
+  financeSettingsFromApi,
+  financeSettingsToPayload,
+  type FinanceSettingsForm,
+} from "@/components/settings/FinanceSettingsPanel";
 
 type SettingsPayload = {
   trendyolSellerId?: string;
@@ -41,6 +48,11 @@ type SettingsPayload = {
   portalSupportPhone?: string;
   portalSupportEmail?: string;
   portalWhatsapp?: string;
+  financeDefaultCommissionPct?: number;
+  financeStopajRatePct?: number;
+  financeServiceFeePerOrder?: number;
+  financeDefaultDesi?: number;
+  cargoDesiTariff?: Array<{ maxDesi: number; fee: number }>;
 };
 
 type IntegrationHints = {
@@ -204,6 +216,9 @@ export default function SettingsPage() {
     trendyolApiSecret: "",
     webApiToken: "",
   }));
+  const [financeForm, setFinanceForm] = useState<FinanceSettingsForm>(
+    defaultFinanceSettingsForm
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -297,6 +312,7 @@ export default function SettingsPage() {
           (s.publicAppUrl as string) || cached.publicAppUrl || "",
       };
       setIntegration(next);
+      setFinanceForm(financeSettingsFromApi(s));
       persistPublicSettings(next);
       const ih = data.integrationHints as IntegrationHints | undefined;
       if (ih) setHints(ih);
@@ -397,6 +413,8 @@ export default function SettingsPage() {
       if (integration.publicAppUrl?.trim())
         payload.publicAppUrl = integration.publicAppUrl.trim();
 
+      Object.assign(payload, financeSettingsToPayload(financeForm));
+
       const res = await fetch("/api/settings?t=" + Date.now(), {
         method: "PUT",
         cache: "no-store",
@@ -495,6 +513,7 @@ export default function SettingsPage() {
   const tabs = [
     { id: "general", name: "Genel & Firma Ayarları", shortName: "Genel & Firma", subtitle: "Firma ve profil", icon: User, color: "text-blue-600 bg-blue-50" },
     { id: "trendyol", name: "Trendyol Entegrasyonu", shortName: "Trendyol", subtitle: "API anahtarları", icon: Store, color: "text-orange-600 bg-orange-50" },
+    { id: "finans", name: "Finans & Kargo", shortName: "Finans", subtitle: "Simülatör ve desi", icon: TrendingUp, color: "text-emerald-600 bg-emerald-50" },
     { id: "web", name: "Next.js Mağaza API", shortName: "Mağaza API", subtitle: "Web entegrasyonu", icon: LinkIcon, color: "text-indigo-600 bg-indigo-50" },
     { id: "print", name: "Etiket & Çıktı", shortName: "Etiket", subtitle: "Yazdırma", icon: Printer, color: "text-purple-600 bg-purple-50" },
   ];
@@ -1105,6 +1124,10 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+          )}
+
+          {activeTab === "finans" && (
+            <FinanceSettingsPanel form={financeForm} onChange={setFinanceForm} />
           )}
 
           {activeTab === "print" && (

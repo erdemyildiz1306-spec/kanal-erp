@@ -15,6 +15,8 @@ import {
   isAdSpendFinanceRow,
   isCargoFinanceRow,
 } from './trendyol-finance-classify';
+import CargoCharge from '@/models/CargoCharge';
+import { syncOrderFinanceFields } from '@/lib/profit-detail';
 
 const MS_DAY = 86_400_000;
 const MAX_WINDOW_MS = 15 * MS_DAY;
@@ -209,30 +211,55 @@ function isAdSpendDescription(desc: string): boolean {
   return isAdSpendFinanceRow('', desc);
 }
 
+async function fetchCargoInvoiceItems(
+  sellerId: string,
+  invoiceSerialNumber: string,
+  headers: Record<string, string>
+): Promise<
+  Array<{
+    orderNumber?: string;
+    amount?: number;
+    shipmentPackageType?: string;
+    parcelUniqueId?: number | string;
+  }>
+> {
+  const url = TrendyolEndpoints.financeCargoInvoiceItems(sellerId, invoiceSerialNumber);
+  let page = 0;
+  let totalPages = 1;
+  const all: Array<{
+    orderNumber?: string;
+    amount?: number;
+    shipmentPackageType?: string;
+    parcelUniqueId?: number | string;
+  }> = [];
+
+  while (page < totalPages) {
+    const { data } = await axios.get<
+      PageResponse & {
+        content?: Array<{
+          orderNumber?: string;
+          amount?: number;
+          shipmentPackageType?: string;
+          parcelUniqueId?: number | string;
+        }>;
+      }
+    >(url, { headers, params: { page, size: 500 }, timeout: 90_000 });
+    const rows = Array.isArray(data?.content) ? data.content : [];
+    totalPages = Math.max(1, Number(data?.totalPages) || 1);
+    all.push(...rows);
+    page++;
+    if (!rows.length) break;
+  }
+  return all;
+}
+
 async function fetchCargoInvoiceItemsTotal(
   sellerId: string,
   invoiceSerialNumber: string,
   headers: Record<string, string>
 ): Promise<number> {
-  const url = TrendyolEndpoints.financeCargoInvoiceItems(sellerId, invoiceSerialNumber);
-  let page = 0;
-  let totalPages = 1;
-  let sum = 0;
-
-  while (page < totalPages) {
-    const { data } = await axios.get<PageResponse & { content?: Array<{ amount?: number }> }>(
-      url,
-      { headers, params: { page, size: 500 }, timeout: 90_000 }
-    );
-    const rows = Array.isArray(data?.content) ? data.content : [];
-    totalPages = Math.max(1, Number(data?.totalPages) || 1);
-    for (const row of rows) {
-      sum += Number(row.amount) || 0;
-    }
-    page++;
-    if (!rows.length) break;
-  }
-  return sum;
+  const items = await fetchCargoInvoiceItems(sellerId, invoiceSerialNumber, headers);
+  return items.reduce((a, i) => a + (Number(i.amount) || 0), 0);
 }
 
 /** Kargo faturası DeductionInvoices kayıtları için detay API toplamını yansıt */
@@ -261,8 +288,32 @@ async function enrichCargoInvoicesFromApi(
 
     let cargoTotal = Number(row.debt) || 0;
     try {
-      const itemSum = await fetchCargoInvoiceItemsTotal(sellerId, invoiceId, headers);
-      if (itemSum > 0) cargoTotal = itemSum;
+      const items = await fetchCargoInvoiceItems(sellerId, invoiceId, headers);
+      if (items.length > 0) {
+        cargoTotal = items.reduce((a, i) => a + (Number(i.amount) || 0), 0);
+        for (const item of items) {
+          const orderNumber = String(item.orderNumber ?? '').trim();
+          const amount = Number(item.amount) || 0;
+          if (!orderNumber || amount <= 0) continue;
+          const parcelUniqueId = String(item.parcelUniqueId ?? `${orderNumber}-${amount}`);
+          await CargoCharge.findOneAndUpdate(
+            { orderNumber, invoiceId, parcelUniqueId },
+            {
+              $set: {
+                orderNumber,
+                amount,
+                chargeType: String(item.shipmentPackageType ?? ''),
+                invoiceId,
+                parcelUniqueId,
+              },
+            },
+            { upsert: true }
+          );
+        }
+      } else {
+        const itemSum = await fetchCargoInvoiceItemsTotal(sellerId, invoiceId, headers);
+        if (itemSum > 0) cargoTotal = itemSum;
+      }
     } catch (error) {
       console.warn(`Kargo faturası detay alınamadı (${invoiceId}):`, error);
     }
@@ -318,6 +369,7 @@ export async function syncTrendyolFinance(opts?: {
   ordersUpdated: number;
   adSpendSynced: number;
   cargoInvoicesEnriched: number;
+  ordersFinanceUpdated: number;
   from: string;
   to: string;
 }> {
@@ -377,12 +429,14 @@ export async function syncTrendyolFinance(opts?: {
     settings.sellerId,
     headers
   );
+  const ordersFinanceUpdated = await syncOrderFinanceFields(start);
 
   return {
     upserted,
     ordersUpdated,
     adSpendSynced,
     cargoInvoicesEnriched,
+    ordersFinanceUpdated,
     from: start.toISOString(),
     to: end.toISOString(),
   };

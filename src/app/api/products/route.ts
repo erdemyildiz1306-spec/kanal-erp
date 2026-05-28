@@ -214,6 +214,9 @@ export async function POST(request: Request) {
 
       costPrice: Number(data.costPrice) || 0,
       price: Number(data.price) || 0,
+      dimensionalWeight:
+        Number(data.dimensionalWeight) > 0 ? Number(data.dimensionalWeight) : 1,
+      cargoFee: Math.max(0, Number(data.cargoFee) || 0),
       prices: {
         website: Number(data.prices?.website) || Number(data.price) || 0,
         trendyol: Number(data.prices?.trendyol) || Number(data.price) || 0,
@@ -435,6 +438,13 @@ export async function PUT(request: Request) {
     if (imagesPayload.length > 0) product.images = imagesPayload;
     if (data.costPrice !== undefined)
       product.costPrice = Number(data.costPrice) || 0;
+    if (data.dimensionalWeight !== undefined) {
+      const d = Number(data.dimensionalWeight);
+      product.dimensionalWeight = Number.isFinite(d) && d > 0 ? d : 1;
+    }
+    if (data.cargoFee !== undefined) {
+      product.cargoFee = Math.max(0, Number(data.cargoFee) || 0);
+    }
     if (data.price !== undefined) product.price = Number(data.price) || 0;
 
     if (data.prices) {

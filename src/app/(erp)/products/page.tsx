@@ -193,6 +193,8 @@ export default function ProductsPage() {
     sku: "",
     barcode: "",
     costPrice: "",
+    dimensionalWeight: "1",
+    cargoFee: "",
     price: "",
     priceWebsite: "",
     priceTrendyol: "",
@@ -806,6 +808,8 @@ export default function ProductsPage() {
       hasVariants: productData.hasVariants,
       images: imagesPayload,
       costPrice: Number(productData.costPrice) || 0,
+      dimensionalWeight: Number(productData.dimensionalWeight) || 1,
+      cargoFee: Math.max(0, Number(productData.cargoFee) || 0),
       price: Number(productData.price) || 0,
       prices: {
         website: Number(productData.priceWebsite) || Number(productData.price) || 0,
@@ -1082,6 +1086,8 @@ export default function ProductsPage() {
       sku: initialSku,
       barcode: generateEan13(),
       costPrice: "",
+      dimensionalWeight: "1",
+      cargoFee: "",
       price: "",
       priceWebsite: "",
       priceTrendyol: "",
@@ -1378,6 +1384,9 @@ export default function ProductsPage() {
         sku: product.sku || "",
         barcode: product.barcode || "",
         costPrice: product.costPrice?.toString() || "0",
+        dimensionalWeight:
+          (product as { dimensionalWeight?: number }).dimensionalWeight?.toString() || "1",
+        cargoFee: (product as { cargoFee?: number }).cargoFee?.toString() || "",
         price: product.price?.toString() || "0",
         priceWebsite:
           product.prices?.website?.toString() || product.price?.toString() || "0",
@@ -3547,6 +3556,39 @@ export default function ProductsPage() {
                         setProductData({
                           ...productData,
                           costPrice: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-1.5 border rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-600">Sabit kargo (₺/adet)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={productData.cargoFee}
+                      onChange={(e) =>
+                        setProductData({
+                          ...productData,
+                          cargoFee: e.target.value,
+                        })
+                      }
+                      placeholder="Boş = ayarlardan"
+                      className="w-full px-3 py-1.5 border rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-600">Desi (kargo)</label>
+                    <input
+                      type="number"
+                      min={0.1}
+                      step={0.1}
+                      value={productData.dimensionalWeight}
+                      onChange={(e) =>
+                        setProductData({
+                          ...productData,
+                          dimensionalWeight: e.target.value,
                         })
                       }
                       className="w-full px-3 py-1.5 border rounded-lg text-sm"

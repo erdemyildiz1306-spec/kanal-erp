@@ -190,6 +190,52 @@ export async function PUT(request: Request) {
       doc.set('publicAppUrl', String(data.publicAppUrl ?? '').trim());
     }
 
+    if (data.financeDefaultCommissionPct !== undefined) {
+      const n = Number(data.financeDefaultCommissionPct);
+      if (Number.isFinite(n) && n >= 0 && n <= 100) {
+        doc.set('financeDefaultCommissionPct', n);
+      }
+    }
+    if (data.financeStopajRatePct !== undefined) {
+      const n = Number(data.financeStopajRatePct);
+      if (Number.isFinite(n) && n >= 0 && n <= 100) {
+        doc.set('financeStopajRatePct', n);
+      }
+    }
+    if (data.financeServiceFeePerOrder !== undefined) {
+      const n = Number(data.financeServiceFeePerOrder);
+      if (Number.isFinite(n) && n >= 0) {
+        doc.set('financeServiceFeePerOrder', n);
+      }
+    }
+    if (data.financeDefaultDesi !== undefined) {
+      const n = Number(data.financeDefaultDesi);
+      if (Number.isFinite(n) && n > 0) {
+        doc.set('financeDefaultDesi', n);
+      }
+    }
+    if (data.financeDefaultCargoFee !== undefined) {
+      const n = Number(data.financeDefaultCargoFee);
+      if (Number.isFinite(n) && n >= 0) {
+        doc.set('financeDefaultCargoFee', n);
+      }
+    }
+    if (data.financeVatRate !== undefined) {
+      const n = Number(data.financeVatRate);
+      if (Number.isFinite(n) && n > 0 && n < 1) {
+        doc.set('financeVatRate', n);
+      }
+    }
+    if (data.cargoDesiTariff !== undefined && Array.isArray(data.cargoDesiTariff)) {
+      const tiers = data.cargoDesiTariff
+        .map((t: { maxDesi?: number; fee?: number }) => ({
+          maxDesi: Number(t.maxDesi) || 0,
+          fee: Number(t.fee) || 0,
+        }))
+        .filter((t: { maxDesi: number; fee: number }) => t.maxDesi > 0 && t.fee >= 0);
+      if (tiers.length) doc.set('cargoDesiTariff', tiers);
+    }
+
     await doc.save();
 
     let brandResolveWarning: string | undefined;

@@ -51,6 +51,26 @@ const SettingSchema = new mongoose.Schema({
   authAllowSignup: { type: Boolean, default: true },
   /** Kayıt sonrası yönetici onayı gerekli */
   authRequireApproval: { type: Boolean, default: true },
+
+  /** Finans simülatörü — varsayılan komisyon % */
+  financeDefaultCommissionPct: { type: Number, default: 20 },
+  /** E-ticaret stopaj oranı % (brüt satış üzerinden) */
+  financeStopajRatePct: { type: Number, default: 1 },
+  /** Sipariş başına sabit hizmet bedeli tahmini (₺) */
+  financeServiceFeePerOrder: { type: Number, default: 0 },
+  /** Ürün desi yoksa varsayılan */
+  financeDefaultDesi: { type: Number, default: 1 },
+  /** Ürün kargo fiyatı yoksa varsayılan sabit kargo (₺/adet) */
+  financeDefaultCargoFee: { type: Number, default: 0 },
+  /** KDV oranı (0.2 = %20) */
+  financeVatRate: { type: Number, default: 0.2 },
+  /** Desi barem → kargo ücreti (KDV dahil ₺) */
+  cargoDesiTariff: [
+    {
+      maxDesi: { type: Number, required: true },
+      fee: { type: Number, required: true },
+    },
+  ],
 }, { timestamps: true });
 
 export default mongoose.models.Setting || mongoose.model('Setting', SettingSchema);

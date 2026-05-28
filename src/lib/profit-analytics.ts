@@ -7,6 +7,9 @@ import FinancialTransaction from '@/models/FinancialTransaction';
 import AdSpendEntry from '@/models/AdSpendEntry';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
+import { computeDetailedProfits } from '@/lib/profit-detail';
+import { netVatFromInclusive } from '@/lib/profit-vat';
+import { computeCampaignProfitability } from '@/lib/campaign-profit';
 import {
   deductionAmount,
   isAdSpendFinanceRow,
@@ -218,15 +221,8 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
   const netProfitBeforeAds =
     sellerRevenue - productCost - stopaj - serviceFee - cargoFee - discount;
   const adSpend = adSpendFromFinance + manualAdSpend;
-  const netProfit = netProfitBeforeAds - adSpend;
   const roas = adSpend > 0 ? grossSales / adSpend : 0;
   const adRoiPct = adSpend > 0 ? (netProfitBeforeAds / adSpend) * 100 : 0;
-
-  const marginPct = grossSales > 0 ? (netProfit / grossSales) * 100 : 0;
-  const profitRatePct =
-    productCost + commission > 0
-      ? (netProfit / (productCost + commission)) * 100
-      : 0;
 
   const barcodes = [...productAgg.keys()];
   if (barcodes.length) {
@@ -267,6 +263,36 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
       marginPct: r.revenue > 0 ? (r.profit / r.revenue) * 100 : 0,
     }));
 
+  const detailed = await computeDetailedProfits({
+    since,
+    until,
+    totalServiceFee: serviceFee,
+    totalStopaj: stopaj,
+    totalAdSpend: adSpend,
+  });
+
+  const cargoFromOrders = detailed.orderRows.reduce((a, r) => a + r.cargoFee, 0);
+  if (cargoFromOrders > cargoFee) cargoFee = cargoFromOrders;
+
+  const estimatedCargoCount = detailed.orderRows.filter((r) => r.cargoEstimated).length;
+
+  const campaignProfits = await computeCampaignProfitability({
+    since,
+    until,
+    totalServiceFee: serviceFee,
+    totalStopaj: stopaj,
+  });
+
+  const vatKpis = detailed.vat;
+
+  const netProfit =
+    netProfitBeforeAds - adSpend - (vatKpis.netVat > 0 ? vatKpis.netVat : 0);
+  const marginPct = grossSales > 0 ? (netProfit / grossSales) * 100 : 0;
+  const profitRatePct =
+    productCost + commission > 0
+      ? (netProfit / (productCost + commission)) * 100
+      : 0;
+
   const expenseBreakdown = [
     { key: 'commission', label: 'Komisyon', amount: commission },
     { key: 'cargo', label: 'Kargo', amount: cargoFee },
@@ -275,9 +301,42 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
     { key: 'discount', label: 'İndirim', amount: discount },
     { key: 'ad', label: 'Reklam harcaması', amount: adSpend },
     { key: 'cost', label: 'Ürün maliyeti', amount: productCost },
-  ].filter((e) => e.amount > 0);
+  ];
+  if (detailed.vat.netVat > 0) {
+    expenseBreakdown.push({
+      key: 'netVat',
+      label: 'Net KDV',
+      amount: detailed.vat.netVat,
+    });
+  }
+  const expenseFiltered = expenseBreakdown.filter((e) => e.amount > 0);
+  const expenseTotal = expenseFiltered.reduce((a, e) => a + e.amount, 0);
 
-  const expenseTotal = expenseBreakdown.reduce((a, e) => a + e.amount, 0);
+  // Ürün adlarını ERP'den zenginleştir
+  const barcodesDetailed = detailed.productRows.map((p) => p.barcode).filter(Boolean);
+  if (barcodesDetailed.length) {
+    const products = await Product.find({
+      $or: [
+        { barcode: { $in: barcodesDetailed } },
+        { 'variants.barcode': { $in: barcodesDetailed } },
+      ],
+    })
+      .select('name barcode variants')
+      .lean();
+    const nameByBarcode = new Map<string, string>();
+    for (const p of products) {
+      if (p.barcode) nameByBarcode.set(String(p.barcode), String(p.name));
+      for (const v of p.variants ?? []) {
+        if (v.barcode) nameByBarcode.set(String(v.barcode), String(p.name));
+      }
+    }
+    for (const row of detailed.productRows) {
+      row.name = nameByBarcode.get(row.barcode) ?? row.name;
+    }
+    for (const row of detailed.lossProducts) {
+      row.name = nameByBarcode.get(row.barcode) ?? row.name;
+    }
+  }
 
   return {
     range,
@@ -303,6 +362,9 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
       roas,
       adRoiPct,
       netProfitBeforeAds,
+      salesVat: vatKpis.salesVat,
+      costVat: vatKpis.costVat,
+      netVat: vatKpis.netVat,
     },
     orderSummary: {
       total: orderCount,
@@ -311,12 +373,19 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
       cancelled,
       netSales: orderCount - cancelled,
     },
-    expenseBreakdown: expenseBreakdown.map((e) => ({
+    expenseBreakdown: expenseFiltered.map((e) => ({
       ...e,
       pct: expenseTotal > 0 ? (e.amount / expenseTotal) * 100 : 0,
     })),
     topBySales,
     topByProfit,
+    dailySeries: detailed.dailySeries,
+    orderProfits: detailed.orderRows.slice(0, 50),
+    productProfits: detailed.productRows.slice(0, 50),
+    lossOrders: detailed.lossOrders.slice(0, 20),
+    lossProducts: detailed.lossProducts.slice(0, 20),
+    estimatedCargoCount,
+    campaignProfits,
     transactionCount: txRows.length,
     adSpendEntries: manualAdRows.map((r) => ({
       id: String(r._id),

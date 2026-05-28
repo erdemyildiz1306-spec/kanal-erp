@@ -237,7 +237,10 @@ export async function POST(request: Request) {
           quantity: Math.max(0, Math.floor(Number(v.stock) || 0)),
           stockCode: String(v.sku ?? product.sku),
           origin: 'TR',
-          dimensionalWeight: 1,
+          dimensionalWeight:
+            Number((product as { dimensionalWeight?: number }).dimensionalWeight) > 0
+              ? Number((product as { dimensionalWeight?: number }).dimensionalWeight)
+              : 1,
           description: product.description || product.name,
           currencyType: 'TRY',
           listPrice,
@@ -266,7 +269,10 @@ export async function POST(request: Request) {
         quantity: Math.max(0, Math.floor(Number(product.stock) || 0)),
         stockCode: product.sku,
         origin: 'TR',
-        dimensionalWeight: 1,
+        dimensionalWeight:
+          Number((product as { dimensionalWeight?: number }).dimensionalWeight) > 0
+            ? Number((product as { dimensionalWeight?: number }).dimensionalWeight)
+            : 1,
         description: product.description || product.name,
         currencyType: 'TRY',
         listPrice,

@@ -37,6 +37,10 @@ const ProductSchema = new mongoose.Schema(
 
     costPrice: { type: Number, required: true, default: 0 },
     price: { type: Number, required: true, default: 0 },
+    /** Trendyol kargo tahmini — desi / hacim ağırlığı */
+    dimensionalWeight: { type: Number, default: 1, min: 0.1 },
+    /** Sabit kargo ücreti (₺/adet) — fatura gelmeden kâr hesabında */
+    cargoFee: { type: Number, default: 0, min: 0 },
     prices: {
       website: { type: Number, default: 0 },
       trendyol: { type: Number, default: 0 },

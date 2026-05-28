@@ -39,7 +39,9 @@ const OrderSchema = new mongoose.Schema({
   trendyolCommission: { type: Number, default: 0 },
   /** Trendyol settlement — satıcı hakediş */
   trendyolSellerRevenue: { type: Number, default: 0 },
-  /** sellerRevenue − costAmount (finans senkronu sonrası) */
+  /** Kargo faturası kalemlerinden (GelirUP tarzı) */
+  trendyolCargoFee: { type: Number, default: 0 },
+  /** sellerRevenue − maliyet − kargo (finans senkronu) */
   netProfitAmount: { type: Number, default: null },
   financeSyncedAt: { type: Date, default: null },
   /** İptal/iade stok + finans iadesi işlendi (çift işlem engeli) */

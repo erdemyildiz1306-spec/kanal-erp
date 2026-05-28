@@ -12,6 +12,11 @@ import {
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Spinner from "@/components/ui/Spinner";
+import FinansSimulatorPanel from "@/components/finance/FinansSimulatorPanel";
+import FinansCampaignPanel, {
+  type CampaignProfitRow,
+} from "@/components/finance/FinansCampaignPanel";
+import { Calculator } from "lucide-react";
 
 type FinanceRange = "7g" | "30g" | "bu-ay" | "bu-yil";
 
@@ -36,6 +41,9 @@ type Analytics = {
     roas: number;
     adRoiPct: number;
     netProfitBeforeAds: number;
+    salesVat: number;
+    costVat: number;
+    netVat: number;
   };
   orderSummary: {
     total: number;
@@ -56,6 +64,28 @@ type Analytics = {
     note: string;
     source: string;
   }>;
+  dailySeries?: Array<{ date: string; grossSales: number; netProfit: number; orderCount: number }>;
+  orderProfits?: Array<{
+    orderNumber: string;
+    status: string;
+    customerName: string;
+    grossSales: number;
+    netProfit: number;
+    cargoFee: number;
+    marginPct: number;
+  }>;
+  productProfits?: Array<{
+    barcode: string;
+    name: string;
+    sales: number;
+    netProfit: number;
+    marginPct: number;
+    cargoFee: number;
+  }>;
+  lossOrders?: Array<{ orderNumber: string; netProfit: number; customerName: string }>;
+  lossProducts?: Array<{ barcode: string; name: string; netProfit: number }>;
+  estimatedCargoCount?: number;
+  campaignProfits?: CampaignProfitRow[];
 };
 
 type Question = {
@@ -77,7 +107,9 @@ function fmtPct(n: number) {
 }
 
 export default function FinansPage() {
-  const [tab, setTab] = useState<"analiz" | "sorular">("analiz");
+  const [tab, setTab] = useState<
+    "analiz" | "simulator" | "kampanya" | "sorular"
+  >("analiz");
   const [range, setRange] = useState<FinanceRange>("30g");
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -139,7 +171,9 @@ export default function FinansPage() {
       const res = await fetch("/api/trendyol/sync-finance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daysBack: range === "7g" ? 14 : 30 }),
+        body: JSON.stringify({
+          daysBack: range === "bu-yil" ? 90 : range === "7g" ? 14 : 30,
+        }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error ?? "Senkron başarısız");
@@ -230,6 +264,8 @@ export default function FinansPage() {
         {(
           [
             { id: "analiz" as const, label: "Kâr Analizi", icon: TrendingUp },
+            { id: "simulator" as const, label: "Fiyat Simülatörü", icon: Calculator },
+            { id: "kampanya" as const, label: "Kampanya Kârı", icon: Megaphone },
             { id: "sorular" as const, label: "Müşteri Soruları", icon: MessageCircle },
           ] as const
         ).map(({ id, label, icon: Icon }) => (
@@ -506,11 +542,126 @@ export default function FinansPage() {
               </div>
             </div>
 
+            {(data.dailySeries?.length ?? 0) > 0 ? (
+              <div className="erp-card p-5">
+                <h3 className="font-bold text-[var(--erp-text)] mb-4">Günlük ciro & net kâr</h3>
+                <div className="flex items-end gap-1 h-32 overflow-x-auto pb-2">
+                  {data.dailySeries!.map((d) => {
+                    const max = Math.max(
+                      ...data.dailySeries!.map((x) => x.grossSales),
+                      1
+                    );
+                    const h = Math.max(8, (d.grossSales / max) * 100);
+                    return (
+                      <div
+                        key={d.date}
+                        className="flex flex-col items-center min-w-[2.5rem]"
+                        title={`${d.date}: ${fmt(d.grossSales)} / kâr ${fmt(d.netProfit)}`}
+                      >
+                        <div
+                          className="w-6 rounded-t bg-[var(--erp-accent)]/80"
+                          style={{ height: `${h}%` }}
+                        />
+                        <span className="text-[9px] erp-muted mt-1 rotate-[-45deg] origin-top-left">
+                          {d.date.slice(5)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {(data.lossProducts?.length ?? 0) > 0 ? (
+              <div className="erp-card p-5 border border-red-100">
+                <h3 className="font-bold text-red-800 mb-3">Zarar eden ürünler</h3>
+                <ul className="space-y-2 text-sm">
+                  {data.lossProducts!.map((p) => (
+                    <li
+                      key={p.barcode}
+                      className="flex justify-between gap-2 border-b border-red-50 pb-2"
+                    >
+                      <span className="truncate">{p.name}</span>
+                      <span className="font-semibold text-red-700 shrink-0">{fmt(p.netProfit)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {(data.orderProfits?.length ?? 0) > 0 ? (
+                <div className="erp-card p-5 overflow-x-auto">
+                  <h3 className="font-bold mb-3">Sipariş bazlı net kâr</h3>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left erp-muted border-b">
+                        <th className="py-2 pr-2">Sipariş</th>
+                        <th className="py-2 pr-2">Kargo</th>
+                        <th className="py-2 text-right">Net kâr</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.orderProfits!.slice(0, 15).map((o) => (
+                        <tr key={o.orderNumber} className="border-b border-slate-50">
+                          <td className="py-2 pr-2">
+                            <div className="font-medium">{o.orderNumber}</div>
+                            <div className="text-xs erp-muted truncate">{o.customerName}</div>
+                          </td>
+                          <td className="py-2 pr-2">{fmt(o.cargoFee)}</td>
+                          <td
+                            className={`py-2 text-right font-semibold ${
+                              o.netProfit >= 0 ? "text-emerald-700" : "text-red-700"
+                            }`}
+                          >
+                            {fmt(o.netProfit)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+
+              {(data.productProfits?.length ?? 0) > 0 ? (
+                <div className="erp-card p-5 overflow-x-auto">
+                  <h3 className="font-bold mb-3">Ürün bazlı net kâr (kargo dahil)</h3>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left erp-muted border-b">
+                        <th className="py-2 pr-2">Ürün</th>
+                        <th className="py-2 pr-2">Adet</th>
+                        <th className="py-2 text-right">Net kâr</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.productProfits!.slice(0, 15).map((p) => (
+                        <tr key={p.barcode} className="border-b border-slate-50">
+                          <td className="py-2 pr-2 truncate max-w-[12rem]">{p.name}</td>
+                          <td className="py-2 pr-2">{p.sales}</td>
+                          <td
+                            className={`py-2 text-right font-semibold ${
+                              p.netProfit >= 0 ? "text-emerald-700" : "text-red-700"
+                            }`}
+                          >
+                            {fmt(p.netProfit)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+
             <div className="rounded-xl border border-blue-100 bg-blue-50/80 p-4 text-sm text-blue-900">
               <strong>Maliyet özeti:</strong> Brüt satış {fmt(data.kpis.grossSales)} − komisyon{" "}
               {fmt(data.kpis.commission)} = hakediş {fmt(data.kpis.sellerRevenue)}. Hakediş −
               ürün maliyeti {fmt(data.kpis.productCost)} − kargo {fmt(data.kpis.cargoFee)} −
               hizmet {fmt(data.kpis.serviceFee)} − stopaj {fmt(data.kpis.stopaj)}
+              {data.kpis.salesVat > 0 ? (
+                <> − KDV (net) {fmt(data.kpis.netVat)}</>
+              ) : null}
               {data.kpis.discount > 0 ? (
                 <> − indirim {fmt(data.kpis.discount)}</>
               ) : null}
@@ -522,8 +673,22 @@ export default function FinansPage() {
                   ayrı API ile çekilir.
                 </span>
               ) : null}
+              {(data.estimatedCargoCount ?? 0) > 0 ? (
+                <span className="block text-xs mt-2 text-amber-800/90">
+                  {data.estimatedCargoCount} siparişte kargo desi tahmini kullanıldı (fatura henüz
+                  kesilmemiş). Ürün desi alanını doldurun; fatura gelince otomatik güncellenir.
+                </span>
+              ) : null}
             </div>
           </div>
+        )
+      ) : tab === "simulator" ? (
+        <FinansSimulatorPanel />
+      ) : tab === "kampanya" ? (
+        loading ? (
+          <Spinner label="Kampanya analizi yükleniyor…" />
+        ) : (
+          <FinansCampaignPanel rows={data?.campaignProfits ?? []} />
         )
       ) : qLoading ? (
         <Spinner label="Sorular yükleniyor…" />
