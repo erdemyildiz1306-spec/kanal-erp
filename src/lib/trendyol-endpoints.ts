@@ -107,4 +107,13 @@ export const TrendyolEndpoints = {
   brandByName: () => `${TRENDYOL_PRODUCT_INTEGRATION}/brands/by-name`,
   /** Marka listesi / arama */
   brands: () => `${TRENDYOL_PRODUCT_INTEGRATION}/brands`,
+  /** Fatura linki gönderme — sendInvoiceLink */
+  sellerInvoiceLinks: (sellerId: string) =>
+    `${TRENDYOL_APIGW}/integration/sellers/${encodeURIComponent(sellerId)}/seller-invoice-links`,
+  /** Fatura linki silme */
+  sellerInvoiceLinksDelete: (sellerId: string) =>
+    `${TRENDYOL_APIGW}/integration/sellers/${encodeURIComponent(sellerId)}/seller-invoice-links/delete`,
+  /** Fatura dosyası yükleme (PDF/JPEG/PNG) */
+  sellerInvoiceFile: (sellerId: string) =>
+    `${TRENDYOL_APIGW}/integration/sellers/${encodeURIComponent(sellerId)}/seller-invoice-file`,
 } as const;

@@ -58,6 +58,18 @@ const OrderSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: null,
   },
+  /** Trendyol e-fatura / e-arşiv gönderim durumu */
+  trendyolInvoice: {
+    status: { type: String, default: '' },
+    invoiceNumber: { type: String, default: '' },
+    invoiceLink: { type: String, default: '' },
+    invoiceUuid: { type: String, default: '' },
+    invoiceDateTime: { type: Number, default: 0 },
+    sentAt: { type: Date, default: null },
+    sentVia: { type: String, default: '' },
+    erpInvoiceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', default: null },
+    lastError: { type: String, default: '' },
+  },
   
   platformOrderId: { type: String },
 

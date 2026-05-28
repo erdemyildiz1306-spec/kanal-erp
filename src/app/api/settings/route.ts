@@ -34,6 +34,8 @@ function buildIntegrationHints(doc: {
     webApiTokenSaved: Boolean(toTrimmedString(doc.get('webApiToken'))),
     trendyolBrandIdSaved: Number.isFinite(brandId) && brandId > 0,
     trendyolBrandNameSaved: brandName.length > 0,
+    efaturamPartnerPasswordSaved: Boolean(toTrimmedString(doc.get('efaturamPartnerPassword'))),
+    efaturamCustomerPasswordSaved: Boolean(toTrimmedString(doc.get('efaturamCustomerPassword'))),
   };
 }
 
@@ -57,6 +59,8 @@ export async function GET() {
     delete (o as { trendyolApiKey?: string }).trendyolApiKey;
     delete (o as { trendyolApiSecret?: string }).trendyolApiSecret;
     delete (o as { webApiToken?: string }).webApiToken;
+    delete (o as { efaturamPartnerPassword?: string }).efaturamPartnerPassword;
+    delete (o as { efaturamCustomerPassword?: string }).efaturamCustomerPassword;
     (o as { publicAppUrl?: string }).publicAppUrl =
       publicAppUrlStored || String((o as { publicAppUrl?: string }).publicAppUrl ?? '');
 
@@ -254,6 +258,57 @@ export async function PUT(request: Request) {
         }))
         .filter((t: { maxDesi: number; fee: number }) => t.maxDesi > 0 && t.fee >= 0);
       if (tiers.length) doc.set('cargoDesiTariff', tiers);
+    }
+
+    if (data.efaturamEnabled !== undefined) {
+      doc.set('efaturamEnabled', Boolean(data.efaturamEnabled));
+    }
+    if (data.efaturamUseStage !== undefined) {
+      doc.set('efaturamUseStage', Boolean(data.efaturamUseStage));
+    }
+    if (data.efaturamPartnerId !== undefined) {
+      const n = Number(data.efaturamPartnerId);
+      if (Number.isFinite(n) && n >= 0) doc.set('efaturamPartnerId', Math.floor(n));
+    }
+    if (data.efaturamPartnerUsername !== undefined) {
+      doc.set('efaturamPartnerUsername', String(data.efaturamPartnerUsername ?? '').trim());
+    }
+    const incomingPartnerPw = toTrimmedString(data.efaturamPartnerPassword);
+    if (incomingPartnerPw !== '') doc.set('efaturamPartnerPassword', incomingPartnerPw);
+    if (data.efaturamCustomerEmail !== undefined) {
+      doc.set('efaturamCustomerEmail', String(data.efaturamCustomerEmail ?? '').trim());
+    }
+    const incomingCustomerPw = toTrimmedString(data.efaturamCustomerPassword);
+    if (incomingCustomerPw !== '') doc.set('efaturamCustomerPassword', incomingCustomerPw);
+    if (data.efaturamCompanyId !== undefined) {
+      const n = Number(data.efaturamCompanyId);
+      if (Number.isFinite(n) && n >= 0) doc.set('efaturamCompanyId', Math.floor(n));
+    }
+    if (data.efaturamUserId !== undefined) {
+      const n = Number(data.efaturamUserId);
+      if (Number.isFinite(n) && n >= 0) doc.set('efaturamUserId', Math.floor(n));
+    }
+    if (data.efaturamInvoicePrefix !== undefined) {
+      doc.set(
+        'efaturamInvoicePrefix',
+        String(data.efaturamInvoicePrefix ?? 'ERP')
+          .trim()
+          .slice(0, 3)
+          .toUpperCase() || 'ERP'
+      );
+    }
+    if (data.efaturamXsltCode !== undefined) {
+      doc.set('efaturamXsltCode', String(data.efaturamXsltCode ?? '').trim());
+    }
+    if (data.efaturamInvoiceLinkTemplate !== undefined) {
+      doc.set('efaturamInvoiceLinkTemplate', String(data.efaturamInvoiceLinkTemplate ?? '').trim());
+    }
+    if (data.efaturamDefaultVatRate !== undefined) {
+      const n = Number(data.efaturamDefaultVatRate);
+      if (Number.isFinite(n) && n >= 0 && n <= 100) doc.set('efaturamDefaultVatRate', n);
+    }
+    if (data.efaturamAutoMarkInvoiced !== undefined) {
+      doc.set('efaturamAutoMarkInvoiced', Boolean(data.efaturamAutoMarkInvoiced));
     }
 
     await doc.save();

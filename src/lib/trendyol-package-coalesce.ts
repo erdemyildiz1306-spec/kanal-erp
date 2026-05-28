@@ -182,6 +182,7 @@ export function extractTrendyolPackageMeta(
   pkg: Record<string, unknown>
 ): Record<string, unknown> {
   const addr = (pkg.shipmentAddress ?? {}) as Record<string, unknown>;
+  const invoiceAddr = (pkg.invoiceAddress ?? {}) as Record<string, unknown>;
   const cargoTrackingNumber = resolveTrendyolCargoTrackingFromPackage(pkg);
   return {
     cargoTrackingNumber,
@@ -191,6 +192,12 @@ export function extractTrendyolPackageMeta(
     cargoProviderName: String(pkg.cargoProviderName ?? ''),
     customerFirstName: String(addr.firstName ?? pkg.customerFirstName ?? ''),
     customerLastName: String(addr.lastName ?? pkg.customerLastName ?? ''),
+    customerId: pkg.customerId ?? pkg.customerID ?? null,
+    commercial: Boolean(pkg.commercial),
+    microRegion: String(pkg.microRegion ?? '').trim() || undefined,
+    shipmentAddress: addr,
+    invoiceAddress: invoiceAddr,
+    customerEmail: String(addr.email ?? invoiceAddr.email ?? '').trim() || undefined,
     packageLastModifiedDate: pkg.packageLastModifiedDate ?? pkg.lastModifiedDate,
     orderDate: pkg.orderDate,
   };

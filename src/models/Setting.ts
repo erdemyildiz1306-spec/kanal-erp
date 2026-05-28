@@ -71,6 +71,23 @@ const SettingSchema = new mongoose.Schema({
       fee: { type: Number, required: true },
     },
   ],
+
+  /** Trendyol E-Faturam — https://developers.trendyolefaturam.com */
+  efaturamEnabled: { type: Boolean, default: false },
+  efaturamUseStage: { type: Boolean, default: false },
+  efaturamPartnerId: { type: Number, default: 0 },
+  efaturamPartnerUsername: { type: String, default: '' },
+  efaturamPartnerPassword: { type: String, default: '' },
+  efaturamCustomerEmail: { type: String, default: '' },
+  efaturamCustomerPassword: { type: String, default: '' },
+  efaturamCompanyId: { type: Number, default: 0 },
+  efaturamUserId: { type: Number, default: 0 },
+  efaturamInvoicePrefix: { type: String, default: 'ERP' },
+  efaturamXsltCode: { type: String, default: '' },
+  /** {uuid} / {invoiceNumber} yer tutucuları */
+  efaturamInvoiceLinkTemplate: { type: String, default: '' },
+  efaturamDefaultVatRate: { type: Number, default: 20 },
+  efaturamAutoMarkInvoiced: { type: Boolean, default: true },
 }, { timestamps: true });
 
 export default mongoose.models.Setting || mongoose.model('Setting', SettingSchema);

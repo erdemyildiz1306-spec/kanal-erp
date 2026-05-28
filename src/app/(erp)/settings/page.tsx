@@ -23,6 +23,7 @@ import FinanceSettingsPanel, {
   financeSettingsToPayload,
   type FinanceSettingsForm,
 } from "@/components/settings/FinanceSettingsPanel";
+import EfaturamSettingsPanel from "@/components/settings/EfaturamSettingsPanel";
 
 type SettingsPayload = {
   trendyolSellerId?: string;
@@ -53,6 +54,20 @@ type SettingsPayload = {
   financeServiceFeePerOrder?: number;
   financeDefaultDesi?: number;
   cargoDesiTariff?: Array<{ maxDesi: number; fee: number }>;
+  efaturamEnabled?: boolean;
+  efaturamUseStage?: boolean;
+  efaturamPartnerId?: string;
+  efaturamPartnerUsername?: string;
+  efaturamPartnerPassword?: string;
+  efaturamCustomerEmail?: string;
+  efaturamCustomerPassword?: string;
+  efaturamCompanyId?: string;
+  efaturamUserId?: string;
+  efaturamInvoicePrefix?: string;
+  efaturamXsltCode?: string;
+  efaturamInvoiceLinkTemplate?: string;
+  efaturamDefaultVatRate?: number;
+  efaturamAutoMarkInvoiced?: boolean;
 };
 
 type IntegrationHints = {
@@ -62,6 +77,8 @@ type IntegrationHints = {
   webApiTokenSaved: boolean;
   trendyolBrandIdSaved?: boolean;
   trendyolBrandNameSaved?: boolean;
+  efaturamPartnerPasswordSaved?: boolean;
+  efaturamCustomerPasswordSaved?: boolean;
 };
 
 const PUBLIC_SETTINGS_STORAGE_KEY = "kanal-erp-settings-public-v1";
@@ -184,6 +201,52 @@ function friendlyDatabaseError(raw: unknown): string {
 
 export default function SettingsPage() {
   const toast = useToast();
+
+  const testEfaturamConnection = async () => {
+    setEfaturamTesting(true);
+    try {
+      const preSave = await fetch("/api/settings", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          efaturamEnabled: integration.efaturamEnabled === true,
+          efaturamUseStage: integration.efaturamUseStage === true,
+          efaturamPartnerId: integration.efaturamPartnerId,
+          efaturamPartnerUsername: integration.efaturamPartnerUsername,
+          efaturamPartnerPassword: integration.efaturamPartnerPassword,
+          efaturamCustomerEmail: integration.efaturamCustomerEmail,
+          efaturamCustomerPassword: integration.efaturamCustomerPassword,
+          companyTaxId: integration.companyTaxId,
+        }),
+      });
+      if (!preSave.ok) {
+        toast.error("Ayarlar kaydedilemedi. Önce kaydet butonunu deneyin.");
+        return;
+      }
+      const res = await fetch("/api/trendyol/invoices/test-connection", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "E-Faturam bağlantısı başarısız.");
+        return;
+      }
+      toast.success(data.message || "E-Faturam bağlantısı başarılı.");
+      if (data.companyId) {
+        setIntegration((prev) => ({
+          ...prev,
+          efaturamCompanyId: String(data.companyId),
+          efaturamUserId: data.userId ? String(data.userId) : prev.efaturamUserId,
+        }));
+      }
+    } catch {
+      toast.error("E-Faturam test isteği başarısız.");
+    } finally {
+      setEfaturamTesting(false);
+    }
+  };
   const [activeTab, setActiveTab] = useState("general");
   const [mobileOpenTab, setMobileOpenTab] = useState<string | null>("general");
   const [loading, setLoading] = useState(true);
@@ -219,6 +282,7 @@ export default function SettingsPage() {
   const [financeForm, setFinanceForm] = useState<FinanceSettingsForm>(
     defaultFinanceSettingsForm
   );
+  const [efaturamTesting, setEfaturamTesting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -313,6 +377,22 @@ export default function SettingsPage() {
           data.effectivePublicAppUrl.trim() !== ""
             ? data.effectivePublicAppUrl.trim()
             : (s.publicAppUrl as string) || cached.publicAppUrl || ""),
+        efaturamEnabled: Boolean(s.efaturamEnabled),
+        efaturamUseStage: Boolean(s.efaturamUseStage),
+        efaturamPartnerId:
+          s.efaturamPartnerId != null ? String(s.efaturamPartnerId) : "",
+        efaturamPartnerUsername: String(s.efaturamPartnerUsername ?? ""),
+        efaturamPartnerPassword: "",
+        efaturamCustomerEmail: String(s.efaturamCustomerEmail ?? ""),
+        efaturamCustomerPassword: "",
+        efaturamCompanyId:
+          s.efaturamCompanyId != null ? String(s.efaturamCompanyId) : "",
+        efaturamUserId: s.efaturamUserId != null ? String(s.efaturamUserId) : "",
+        efaturamInvoicePrefix: String(s.efaturamInvoicePrefix ?? "ERP"),
+        efaturamXsltCode: String(s.efaturamXsltCode ?? ""),
+        efaturamInvoiceLinkTemplate: String(s.efaturamInvoiceLinkTemplate ?? ""),
+        efaturamDefaultVatRate: Number(s.efaturamDefaultVatRate) || 20,
+        efaturamAutoMarkInvoiced: s.efaturamAutoMarkInvoiced !== false,
       };
       setIntegration(next);
       setFinanceForm(financeSettingsFromApi(s));
@@ -415,6 +495,31 @@ export default function SettingsPage() {
       }
       if (integration.publicAppUrl?.trim())
         payload.publicAppUrl = integration.publicAppUrl.trim();
+      payload.efaturamEnabled = integration.efaturamEnabled === true;
+      payload.efaturamUseStage = integration.efaturamUseStage === true;
+      if (integration.efaturamPartnerId?.trim())
+        payload.efaturamPartnerId = integration.efaturamPartnerId.trim();
+      if (integration.efaturamPartnerUsername?.trim())
+        payload.efaturamPartnerUsername = integration.efaturamPartnerUsername.trim();
+      if (integration.efaturamPartnerPassword?.trim())
+        payload.efaturamPartnerPassword = integration.efaturamPartnerPassword.trim();
+      if (integration.efaturamCustomerEmail?.trim())
+        payload.efaturamCustomerEmail = integration.efaturamCustomerEmail.trim();
+      if (integration.efaturamCustomerPassword?.trim())
+        payload.efaturamCustomerPassword = integration.efaturamCustomerPassword.trim();
+      if (integration.efaturamCompanyId?.trim())
+        payload.efaturamCompanyId = integration.efaturamCompanyId.trim();
+      if (integration.efaturamUserId?.trim())
+        payload.efaturamUserId = integration.efaturamUserId.trim();
+      if (integration.efaturamInvoicePrefix?.trim())
+        payload.efaturamInvoicePrefix = integration.efaturamInvoicePrefix.trim();
+      if (integration.efaturamXsltCode !== undefined)
+        payload.efaturamXsltCode = integration.efaturamXsltCode;
+      if (integration.efaturamInvoiceLinkTemplate !== undefined)
+        payload.efaturamInvoiceLinkTemplate = integration.efaturamInvoiceLinkTemplate;
+      if (integration.efaturamDefaultVatRate != null)
+        payload.efaturamDefaultVatRate = integration.efaturamDefaultVatRate;
+      payload.efaturamAutoMarkInvoiced = integration.efaturamAutoMarkInvoiced !== false;
 
       Object.assign(payload, financeSettingsToPayload(financeForm));
 
@@ -920,6 +1025,14 @@ export default function SettingsPage() {
                   HTTPS linkleri doğrudan alır.
                 </p>
               </div>
+
+              <EfaturamSettingsPanel
+                values={integration}
+                hints={hints}
+                onChange={(patch) => setIntegration({ ...integration, ...patch })}
+                onTestConnection={() => void testEfaturamConnection()}
+                testing={efaturamTesting}
+              />
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">

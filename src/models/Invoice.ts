@@ -37,6 +37,10 @@ const InvoiceSchema = new mongoose.Schema(
 
     /** e-Belge / entegrasyon referansları (ileride doldurulur) */
     externalDocumentId: { type: String, default: "" },
+    platform: { type: String, enum: ["manual", "trendyol", ""], default: "" },
+    trendyolPackageId: { type: String, default: "" },
+    trendyolInvoiceNumber: { type: String, default: "" },
+    trendyolInvoiceLink: { type: String, default: "" },
   },
   { timestamps: true }
 );

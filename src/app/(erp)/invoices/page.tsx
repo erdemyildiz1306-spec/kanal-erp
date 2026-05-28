@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Receipt, Plus, Eye, Pencil, Trash2, Ban, CheckCircle } from "lucide-react";
+import Link from "next/link";
+import { Receipt, Plus, Eye, Pencil, Trash2, Ban, CheckCircle, FileText } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
@@ -298,14 +299,23 @@ export default function InvoicesPage() {
             <p className="text-sm text-slate-500 mt-1">Taslak oluşturma, düzenleme, kesme ve iptal.</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800"
-        >
-          <Plus size={18} />
-          Yeni taslak
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/invoices/trendyol"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-orange-200 bg-orange-50 text-orange-800 text-sm font-medium hover:bg-orange-100"
+          >
+            <FileText size={18} />
+            Trendyol Fatura
+          </Link>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800"
+          >
+            <Plus size={18} />
+            Yeni taslak
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
