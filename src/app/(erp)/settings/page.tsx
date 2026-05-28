@@ -12,6 +12,7 @@ import {
   Mail,
   Download,
   TrendingUp,
+  FileText,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Spinner from "@/components/ui/Spinner";
@@ -620,7 +621,8 @@ export default function SettingsPage() {
 
   const tabs = [
     { id: "general", name: "Genel & Firma Ayarları", shortName: "Genel & Firma", subtitle: "Firma ve profil", icon: User, color: "text-blue-600 bg-blue-50" },
-    { id: "trendyol", name: "Trendyol Entegrasyonu", shortName: "Trendyol", subtitle: "API anahtarları", icon: Store, color: "text-orange-600 bg-orange-50" },
+    { id: "trendyol", name: "Trendyol Satıcı API", shortName: "TY Satıcı", subtitle: "Sipariş, ürün, stok", icon: Store, color: "text-orange-600 bg-orange-50" },
+    { id: "trendyol-fatura", name: "Trendyol E-Faturam", shortName: "E-Faturam", subtitle: "e-Arşiv ve fatura", icon: FileText, color: "text-violet-600 bg-violet-50" },
     { id: "finans", name: "Finans & Kargo", shortName: "Finans", subtitle: "Simülatör ve desi", icon: TrendingUp, color: "text-emerald-600 bg-emerald-50" },
     { id: "web", name: "Next.js Mağaza API", shortName: "Mağaza API", subtitle: "Web entegrasyonu", icon: LinkIcon, color: "text-indigo-600 bg-indigo-50" },
     { id: "print", name: "Etiket & Çıktı", shortName: "Etiket", subtitle: "Yazdırma", icon: Printer, color: "text-purple-600 bg-purple-50" },
@@ -809,23 +811,14 @@ export default function SettingsPage() {
           )}
 
           {activeTab === "trendyol" && (
-            <div className="space-y-6">
-              <div className="border-b border-slate-100 pb-4">
+            <div className="space-y-5">
+              <div>
                 <h3 className="text-lg font-bold text-slate-900">Trendyol Satıcı API</h3>
-                <p className="text-sm text-slate-500">
-                  Basic Auth için API Key / Secret. Anahtarlar güvenlik nedeniyle kutularda tekrar gösterilmez — değiştirmek için yeniden yazıp kaydedin.
-                </p>
-                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-2">
-                  Sipariş/ürün çekme ile ürün yayımlama farklı API uçları kullanır; bilgiler aynı kalır. Yayımlama hatasında önce «Kategori Ağacını Eşitle» deyin, üründe beden/renk özniteliklerini doldurun.
+                <p className="text-sm text-slate-500 mt-1">
+                  Sipariş çekme, ürün yayımlama, stok/fiyat ve webhook.{" "}
+                  <strong>E-Fatura ayarları ayrı sekmede</strong> («E-Faturam»).
                 </p>
               </div>
-
-              {loadError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950">
-                  <p className="font-semibold">Veritabanı bağlantısı yok — kayıt çalışmaz</p>
-                  <p className="mt-1">{loadError}</p>
-                </div>
-              ) : null}
 
               {(brandPendingServerSave(integration, hints) ||
                 (hints.trendyolBrandNameSaved && !hints.trendyolBrandIdSaved)) && (
@@ -833,20 +826,18 @@ export default function SettingsPage() {
                   <p className="font-semibold">Marka sunucuya kaydedilmedi</p>
                   <p className="mt-1 text-amber-900/90">
                     {brandPendingServerSave(integration, hints)
-                      ? "Marka alanı dolu görünüyor ama sunucuda kayıtlı değil. «Ayarları Kaydet» butonuna basın; yalnızca tarayıcı hafızası yayımlama için yeterli değildir."
-                      : "Marka adı kayıtlı ama sayısal Marka ID yok. Marka ID alanına Trendyol’daki sayıyı yazın veya kaydedince otomatik aransın."}
+                      ? "Marka alanı dolu görünüyor ama sunucuda kayıtlı değil. «Kaydet» butonuna basın."
+                      : "Marka adı kayıtlı ama sayısal Marka ID yok. Marka ID yazın veya kaydedince otomatik aransın."}
                   </p>
                 </div>
               )}
 
               {(hints.trendyolSellerIdSaved ||
                 hints.trendyolApiKeySaved ||
-                hints.trendyolApiSecretSaved ||
-                hints.trendyolBrandIdSaved ||
-                hints.trendyolBrandNameSaved) && (
+                hints.trendyolApiSecretSaved) && (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950">
                   <p className="font-semibold">Kayıtlı Trendyol bağlantısı</p>
-                  <ul className="mt-2 space-y-1 text-emerald-900/90">
+                  <ul className="mt-2 space-y-1 text-emerald-900/90 text-xs sm:text-sm">
                     <li>
                       Satıcı ID:{" "}
                       <span className="font-mono font-medium">
@@ -855,45 +846,21 @@ export default function SettingsPage() {
                       </span>
                     </li>
                     <li>
-                      Marka ID:{" "}
-                      {hints.trendyolBrandIdSaved ? (
-                        <span className="font-mono font-medium">
-                          {integration.trendyolBrandId?.trim() || "sunucuda kayıtlı"}
-                        </span>
-                      ) : (
-                        "henüz girilmedi"
-                      )}
-                    </li>
-                    <li>
-                      Marka adı:{" "}
-                      {hints.trendyolBrandNameSaved ? (
-                        <span className="font-medium">
-                          {integration.trendyolBrandName?.trim() || "kaydedildi ✓"}
-                        </span>
-                      ) : (
-                        "henüz girilmedi"
-                      )}
-                    </li>
-                    <li>
-                      API Key:{" "}
-                      {hints.trendyolApiKeySaved ? (
-                        <span className="font-medium text-emerald-800">kaydedildi ✓</span>
-                      ) : (
-                        "henüz girilmedi"
-                      )}
-                    </li>
-                    <li>
-                      API Secret:{" "}
-                      {hints.trendyolApiSecretSaved ? (
-                        <span className="font-medium text-emerald-800">kaydedildi ✓</span>
-                      ) : (
-                        "henüz girilmedi"
-                      )}
+                      API Key / Secret:{" "}
+                      {hints.trendyolApiKeySaved && hints.trendyolApiSecretSaved
+                        ? "kaydedildi ✓"
+                        : "eksik"}
                     </li>
                   </ul>
                 </div>
               )}
 
+              <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
+                <h4 className="font-semibold text-slate-900 text-sm">API kimlik bilgileri</h4>
+                <p className="text-xs text-slate-500 -mt-2">
+                  Trendyol Satıcı Paneli → Entegrasyon → API bilgileri. Basic Auth için Key ve Secret
+                  kullanılır; kutularda tekrar gösterilmez.
+                </p>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -959,7 +926,13 @@ export default function SettingsPage() {
                   className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
+              </div>
 
+              <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
+                <h4 className="font-semibold text-slate-900 text-sm">Marka (ürün yayımlama)</h4>
+                <p className="text-xs text-slate-500 -mt-2">
+                  Ürün create API için zorunlu. Marka adı yazıp kaydedince ID otomatik aranabilir.
+                </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1004,10 +977,13 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
+              </div>
 
+              <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
+                <h4 className="font-semibold text-slate-900 text-sm">Ürün görselleri</h4>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Yayımlama adresi (HTTPS) — Trendyol görselleri
+                  Yayımlama adresi (HTTPS)
                 </label>
                 <input
                   type="url"
@@ -1025,15 +1001,10 @@ export default function SettingsPage() {
                   HTTPS linkleri doğrudan alır.
                 </p>
               </div>
+              </div>
 
-              <EfaturamSettingsPanel
-                values={integration}
-                hints={hints}
-                onChange={(patch) => setIntegration({ ...integration, ...patch })}
-                onTestConnection={() => void testEfaturamConnection()}
-                testing={efaturamTesting}
-              />
-
+              <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
+                <h4 className="font-semibold text-slate-900 text-sm">Sipariş &amp; stok</h4>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                   Stok düşüm eşiği (Trendyol sync)
@@ -1124,8 +1095,9 @@ export default function SettingsPage() {
                   Webhook sonrası kısa süre poll atla (çift API yükünü azaltır)
                 </label>
               </div>
+              </div>
 
-              <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 space-y-3">
+              <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 sm:p-5 space-y-3">
                 <div>
                   <h4 className="font-semibold text-slate-900 text-sm">Varyant şablonları (Trendyol)</h4>
                   <p className="text-xs text-slate-500 mt-1">
@@ -1182,9 +1154,14 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
+                <h4 className="font-semibold text-slate-900 text-sm">Webhook</h4>
+                <p className="text-xs text-slate-500 -mt-2">
+                  Trendyol&apos;da anlık sipariş bildirimi için bu URL&apos;yi webhook olarak tanımlayın.
+                </p>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Webhook token (Trendyol URL son segmenti)
+                  Webhook token (URL son segmenti)
                 </label>
                 <input
                   type="text"
@@ -1206,6 +1183,26 @@ export default function SettingsPage() {
                   </p>
                 ) : null}
               </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "trendyol-fatura" && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Trendyol E-Faturam</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  e-Arşiv / e-Fatura kesimi ve Trendyol&apos;a fatura iletimi. Satıcı API ayarlarından
+                  bağımsızdır — «Genel & Firma» VKN bilgisi de gereklidir.
+                </p>
+              </div>
+              <EfaturamSettingsPanel
+                values={integration}
+                hints={hints}
+                onChange={(patch) => setIntegration({ ...integration, ...patch })}
+                onTestConnection={() => void testEfaturamConnection()}
+                testing={efaturamTesting}
+              />
             </div>
           )}
 
