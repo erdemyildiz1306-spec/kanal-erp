@@ -260,7 +260,7 @@ export default function FinansPage() {
         }
       />
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
         {(
           [
             { id: "analiz" as const, label: "Kâr Analizi", icon: TrendingUp },
@@ -273,7 +273,7 @@ export default function FinansPage() {
             key={id}
             type="button"
             onClick={() => setTab(id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border shrink-0 whitespace-nowrap ${
               tab === id
                 ? "bg-[var(--erp-accent)] text-white border-[var(--erp-accent)]"
                 : "bg-[var(--erp-surface)] border-[var(--erp-border)] erp-muted"
@@ -311,6 +311,17 @@ export default function FinansPage() {
             >
               İlk senkronu başlat
             </button>
+            <p className="text-xs erp-muted pt-2">
+              Finans verisi olmadan da{" "}
+              <button type="button" className="underline text-[var(--erp-accent)]" onClick={() => setTab("simulator")}>
+                Fiyat Simülatörü
+              </button>{" "}
+              ve{" "}
+              <button type="button" className="underline text-[var(--erp-accent)]" onClick={() => setTab("kampanya")}>
+                Kampanya Kârı
+              </button>{" "}
+              sekmelerini kullanabilirsiniz.
+            </p>
           </div>
         ) : (
           <div className="space-y-6">
