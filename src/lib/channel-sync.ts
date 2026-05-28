@@ -96,6 +96,8 @@ export async function pushProductStockToChannels(
       const endpoint = resolveStorePushEndpoint(storeSettings);
       if (!storeSettings.webApiUrl && !storeSettings.webApiPushUrl) {
         result.web = 'Mağaza URL tanımlı değil';
+      } else if (!token) {
+        result.web = 'Mağaza API token tanımlı değil';
       } else {
         const listPrice = Math.max(0, Number(product.price) || 0);
         const webSale = Math.max(0, Number(product.prices?.website) || listPrice);
@@ -134,7 +136,7 @@ export async function pushProductStockToChannels(
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({ source: 'kanal-erp', items }),
             signal: AbortSignal.timeout(60_000),
@@ -176,6 +178,7 @@ export function allowTrendyolOrderMock(): boolean {
 }
 
 import { isProductionEnv } from '@/lib/production-guard';
+import { secureCompareStrings } from '@/lib/secure-compare';
 
 export function verifyStoreWebhookSecret(request: Request): boolean {
   const expected = process.env.STORE_WEBHOOK_SECRET?.trim();
@@ -186,5 +189,5 @@ export function verifyStoreWebhookSecret(request: Request): boolean {
     request.headers.get('x-webhook-secret') ??
     request.headers.get('x-kanal-webhook-secret') ??
     '';
-  return header === expected;
+  return secureCompareStrings(header, expected);
 }

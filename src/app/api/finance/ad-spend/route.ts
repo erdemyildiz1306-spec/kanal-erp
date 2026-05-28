@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import AdSpendEntry from '@/models/AdSpendEntry';
+import { requireSession } from '@/lib/auth';
 
-export async function GET() {
+const FINANCE_ROLES = ['admin', 'operator', 'accountant'] as const;
+
+export async function GET(request: Request) {
   try {
+    const session = requireSession(request, [...FINANCE_ROLES]);
+    if (session instanceof NextResponse) return session;
+
     await connectToDatabase();
     const rows = await AdSpendEntry.find({})
       .sort({ spendDate: -1 })
@@ -18,6 +24,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'accountant']);
+    if (session instanceof NextResponse) return session;
+
     await connectToDatabase();
     const body = await request.json();
     const amount = Number(body?.amount);
@@ -54,6 +63,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'accountant']);
+    if (session instanceof NextResponse) return session;
+
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

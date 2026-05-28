@@ -47,7 +47,10 @@ export default function StoreInvoicesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/store/invoices/pending", { cache: "no-store" });
+      const res = await fetch("/api/store/invoices/pending", {
+        cache: "no-store",
+        credentials: "include",
+      });
       const data = await res.json();
       if (data.success) setOrders(data.orders || []);
       else setBanner({ kind: "err", text: data.error || "Liste alınamadı." });

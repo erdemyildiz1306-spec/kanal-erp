@@ -19,6 +19,12 @@ export async function POST(request: Request) {
     if (items.length === 0) {
       return NextResponse.json({ success: false, error: 'items boş' }, { status: 400 });
     }
+    if (items.length > 500) {
+      return NextResponse.json(
+        { success: false, error: 'Tek seferde en fazla 500 kalem güncellenebilir.' },
+        { status: 400 }
+      );
+    }
 
     let updated = 0;
     for (const row of items) {

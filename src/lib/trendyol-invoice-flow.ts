@@ -17,6 +17,9 @@ import {
   resolveEfaturamPublicLink,
 } from '@/lib/trendyol-efaturam';
 import { calculateInvoiceTotals } from '@/lib/invoice-math';
+import { createErpInvoiceWithRetry } from '@/lib/erp-invoice-number';
+import { assertHttpsInvoiceLink } from '@/lib/outbound-url';
+import { StoreInvoiceError } from '@/lib/store-invoice-errors';
 
 export type OrderDoc = {
   _id: unknown;
@@ -67,6 +70,36 @@ export async function loadEfaturamSettingsFromDb(): Promise<EfaturamSettings | n
   };
 }
 
+function assertValidRecipientTaxId(taxId: string) {
+  const normalized = String(taxId ?? '').replace(/\D/g, '');
+  if (normalized.length !== 10 && normalized.length !== 11) {
+    throw new StoreInvoiceError(
+      'Siparişte geçerli VKN/TCKN yok. Trendyol sipariş senkronunda fatura alanlarının dolu olduğundan emin olun.',
+      400
+    );
+  }
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseSequenceFromInvoiceNumber(value: string, prefix: string, year: number): number {
+  const re = new RegExp(`^${escapeRegex(prefix)}${year}(\\d{9})$`);
+  const match = re.exec(String(value ?? '').trim());
+  if (!match) return 0;
+  return Number(match[1]) || 0;
+}
+
+async function markTrendyolInvoiceFailed(orderId: unknown, message: string) {
+  await Order.findByIdAndUpdate(orderId, {
+    $set: {
+      'trendyolInvoice.status': 'failed',
+      'trendyolInvoice.lastError': String(message).slice(0, 500),
+    },
+  });
+}
+
 function parseCustomerName(full: string): { name: string; surname: string } {
   const parts = String(full ?? '').trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return { name: 'Müşteri', surname: '' };
@@ -82,7 +115,7 @@ function extractRecipientFromOrder(order: OrderDoc) {
       .replace(/\D/g, '');
     const cityDistrict = String(order.customerAddress ?? meta.address ?? '').split('/');
     return {
-      taxId: taxId.length >= 10 ? taxId : '11111111111',
+      taxId,
       name,
       surname,
       title: String(meta.companyName ?? meta.company ?? '').trim() || undefined,
@@ -106,10 +139,10 @@ function extractRecipientFromOrder(order: OrderDoc) {
     invoiceAddr.taxNumber ??
       invoiceAddr.invoiceTaxNumber ??
       meta.customerTaxId ??
-      '11111111111'
+      ''
   ).replace(/\D/g, '');
   return {
-    taxId: taxId.length >= 10 ? taxId : '11111111111',
+    taxId,
     name,
     surname,
     title: String(invoiceAddr.company ?? '').trim() || undefined,
@@ -124,14 +157,25 @@ function extractRecipientFromOrder(order: OrderDoc) {
 
 async function nextInvoiceSequence(prefix: string): Promise<number> {
   const year = new Date().getFullYear();
-  const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${year}`);
-  const count = await Order.countDocuments({
+  const re = new RegExp(`^${escapeRegex(prefix)}${year}`);
+  const latest = await Order.findOne({
     $or: [
       { 'trendyolInvoice.invoiceNumber': { $regex: re } },
       { 'storeInvoice.invoiceNumber': { $regex: re } },
     ],
-  });
-  return count + 1;
+  })
+    .sort({ updatedAt: -1 })
+    .select('trendyolInvoice.invoiceNumber storeInvoice.invoiceNumber')
+    .lean();
+
+  let maxSeq = 0;
+  if (latest) {
+    maxSeq = Math.max(
+      parseSequenceFromInvoiceNumber(latest.trendyolInvoice?.invoiceNumber ?? '', prefix, year),
+      parseSequenceFromInvoiceNumber(latest.storeInvoice?.invoiceNumber ?? '', prefix, year)
+    );
+  }
+  return maxSeq + 1;
 }
 
 export async function issueTrendyolInvoiceForOrder(input: {
@@ -147,11 +191,14 @@ export async function issueTrendyolInvoiceForOrder(input: {
   await connectToDatabase();
   const order = (await Order.findById(input.orderId).lean()) as OrderDoc | null;
   if (!order || order.platform !== 'trendyol') {
-    throw new Error('Trendyol siparişi bulunamadı.');
+    throw new StoreInvoiceError('Trendyol siparişi bulunamadı.', 404);
   }
   const packageId = String(order.packageId ?? '').trim();
   if (!/^\d+$/.test(packageId)) {
-    throw new Error('Geçerli Trendyol paket numarası yok. Önce sipariş senkronu yapın.');
+    throw new StoreInvoiceError(
+      'Geçerli Trendyol paket numarası yok. Önce sipariş senkronu yapın.',
+      400
+    );
   }
 
   const settingsDoc = await resolveSingletonSettingDocument();
@@ -166,184 +213,211 @@ export async function issueTrendyolInvoiceForOrder(input: {
     invoiceNumber = buildTrendyolInvoiceNumber(prefix, await nextInvoiceSequence(prefix));
   }
   if (!isValidTrendyolInvoiceNumber(invoiceNumber)) {
-    throw new Error(
-      `Geçersiz fatura numarası: ${invoiceNumber}. Format: 3 alfanumerik + yıl + 9 rakam (ör. ERP2026000000001).`
+    throw new StoreInvoiceError(
+      `Geçersiz fatura numarası: ${invoiceNumber}. Format: 3 alfanumerik + yıl + 9 rakam.`,
+      400
     );
   }
 
   const invoiceDateTime = unixInvoiceDateTime();
   let invoiceLink = String(input.invoiceLink ?? '').trim();
   let invoiceUuid = String(order.trendyolInvoice?.invoiceUuid ?? '').trim();
-  let sentVia: 'efaturam' | 'link' | 'file' = input.mode;
+  const sentVia: 'efaturam' | 'link' | 'file' = input.mode;
+  let erpInvoiceId: unknown = null;
 
-  if (input.mode === 'efaturam') {
-    if (!efaturam) throw new Error('E-Faturam ayarları eksik. Ayarlar → Trendyol E-Faturam bölümünü doldurun.');
-    if (!companyTaxId) throw new Error('Firma vergi numarası (VKN) ayarlarda tanımlı değil.');
+  try {
+    if (input.mode === 'efaturam') {
+      if (!efaturam) {
+        throw new StoreInvoiceError('E-Faturam ayarları eksik. Ayarlar → E-Faturam sekmesini doldurun.', 400);
+      }
+      if (!companyTaxId) {
+        throw new StoreInvoiceError('Firma vergi numarası (VKN) ayarlarda tanımlı değil.', 400);
+      }
 
-    const session = await getEfaturamCustomerSession(efaturam, companyTaxId);
-    const companyId = efaturam.companyId || session.companyId;
-    const userId = efaturam.userId || session.userId;
-    if (!companyId || !userId) {
-      throw new Error('E-Faturam companyId/userId bulunamadı. Ayarlarda kaydedin veya test bağlantısı çalıştırın.');
-    }
+      const recipient = extractRecipientFromOrder(order);
+      assertValidRecipientTaxId(recipient.taxId);
 
-    const recipient = extractRecipientFromOrder(order);
-    const lines = (order.items ?? []).map((item) => ({
-      name: String(item.productName ?? 'Ürün'),
-      quantity: Number(item.quantity) || 1,
-      unitPriceGross: Number(item.unitPrice) || 0,
-      vatRate: efaturam.defaultVatRate || vatPct,
-    }));
-    if (lines.length === 0) {
-      lines.push({
-        name: `Trendyol sipariş ${order.orderNumber}`,
-        quantity: 1,
-        unitPriceGross: Number(order.totalAmount) || 0,
-        vatRate: efaturam.defaultVatRate || vatPct,
-      });
-    }
+      const session = await getEfaturamCustomerSession(efaturam, companyTaxId);
+      const companyId = efaturam.companyId || session.companyId;
+      const userId = efaturam.userId || session.userId;
+      if (!companyId || !userId) {
+        throw new StoreInvoiceError(
+          'E-Faturam companyId/userId bulunamadı. Bağlantıyı test edin.',
+          400
+        );
+      }
 
-    const created = await efaturamCreateEArchive({
-      gateway: session.gateway,
-      customerToken: session.accessToken,
-      companyId,
-      userId,
-      prefix: efaturam.invoicePrefix,
-      xsltCode: efaturam.xsltCode,
-      localReferenceId: order.orderNumber,
-      recipient,
-      lines,
-      orderNumber: order.orderNumber,
-    });
-
-    invoiceUuid = String(created.invoiceUuid ?? created.invoiceId ?? '').trim();
-    const createdNumber = String(created.invoiceId ?? created.invoiceNumber ?? invoiceNumber).trim();
-    if (createdNumber && isValidTrendyolInvoiceNumber(createdNumber)) {
-      invoiceNumber = createdNumber;
-    }
-    invoiceLink =
-      resolveEfaturamPublicLink(efaturam.invoiceLinkTemplate, {
-        invoiceUuid,
-        invoiceId: String(created.invoiceId ?? ''),
-        invoiceNumber,
-      }) || invoiceLink;
-
-    if (!invoiceLink) {
-      throw new Error(
-        'E-Arşiv oluşturuldu ancak public link yok. Ayarlarda «Fatura link şablonu» tanımlayın veya manuel link gönderin.'
-      );
-    }
-  }
-
-  if (input.mode === 'file') {
-    if (!input.fileBuffer?.length) throw new Error('Fatura dosyası gerekli.');
-    await uploadTrendyolInvoiceFile({
-      sellerId: tySettings.sellerId,
-      apiKey: tySettings.apiKey,
-      apiSecret: tySettings.apiSecret,
-      shipmentPackageId: packageId,
-      fileBuffer: input.fileBuffer,
-      fileName: input.fileName || 'fatura.pdf',
-      mimeType: input.mimeType || 'application/pdf',
-      invoiceDateTime,
-      invoiceNumber,
-    });
-  } else {
-    if (!invoiceLink) throw new Error('Fatura linki gerekli.');
-    await sendTrendyolInvoiceLink({
-      sellerId: tySettings.sellerId,
-      apiKey: tySettings.apiKey,
-      apiSecret: tySettings.apiSecret,
-      payload: {
-        invoiceLink,
-        shipmentPackageId: Number(packageId),
-        invoiceDateTime,
-        invoiceNumber,
-      },
-    });
-  }
-
-  const markInvoiced =
-    input.markInvoiced ??
-    Boolean(settingsDoc.get('efaturamAutoMarkInvoiced') ?? true);
-
-  if (markInvoiced) {
-    const lines = (order.items ?? [])
-      .map((item) => ({
-        lineId: Number(item.lineId),
+      const lines = (order.items ?? []).map((item) => ({
+        name: String(item.productName ?? 'Ürün'),
         quantity: Number(item.quantity) || 1,
-      }))
-      .filter((l) => Number.isFinite(l.lineId) && l.lineId > 0);
-    if (lines.length > 0) {
-      await updateTrendyolPackageStatus({
+        unitPriceGross: Number(item.unitPrice) || 0,
+        vatRate: efaturam.defaultVatRate || vatPct,
+      }));
+      if (lines.length === 0) {
+        lines.push({
+          name: `Trendyol sipariş ${order.orderNumber}`,
+          quantity: 1,
+          unitPriceGross: Number(order.totalAmount) || 0,
+          vatRate: efaturam.defaultVatRate || vatPct,
+        });
+      }
+
+      const created = await efaturamCreateEArchive({
+        gateway: session.gateway,
+        customerToken: session.accessToken,
+        companyId,
+        userId,
+        prefix: efaturam.invoicePrefix,
+        xsltCode: efaturam.xsltCode,
+        localReferenceId: order.orderNumber,
+        recipient: { ...recipient, taxId: recipient.taxId },
+        lines,
+        orderNumber: order.orderNumber,
+      });
+
+      invoiceUuid = String(created.invoiceUuid ?? created.invoiceId ?? '').trim();
+      const createdNumber = String(created.invoiceId ?? created.invoiceNumber ?? invoiceNumber).trim();
+      if (createdNumber && isValidTrendyolInvoiceNumber(createdNumber)) {
+        invoiceNumber = createdNumber;
+      }
+      invoiceLink =
+        resolveEfaturamPublicLink(efaturam.invoiceLinkTemplate, {
+          invoiceUuid,
+          invoiceId: String(created.invoiceId ?? ''),
+          invoiceNumber,
+        }) || invoiceLink;
+
+      if (!invoiceLink) {
+        throw new StoreInvoiceError(
+          'E-Arşiv oluşturuldu ancak public link yok. Fatura link şablonu tanımlayın.',
+          400
+        );
+      }
+    }
+
+    if (invoiceLink) {
+      invoiceLink = assertHttpsInvoiceLink(invoiceLink);
+    }
+
+    const invoiceLines = (order.items ?? []).map((item) => ({
+      description: String(item.productName ?? 'Ürün'),
+      quantity: Number(item.quantity) || 1,
+      unitPrice: Number(item.unitPrice) || 0,
+      vatRate: vatPct,
+    }));
+    const totals = calculateInvoiceTotals(invoiceLines);
+    const erpInvoice = await createErpInvoiceWithRetry({
+      orderRef: order.orderNumber,
+      status: 'Kesildi',
+      customerName: order.customerName ?? '',
+      customerTaxId: extractRecipientFromOrder(order).taxId,
+      customerAddress: order.customerAddress ?? '',
+      lines: totals.lines,
+      netTotal: totals.netTotal,
+      vatTotal: totals.vatTotal,
+      grandTotal: totals.grandTotal,
+      externalDocumentId: invoiceUuid || invoiceNumber,
+      platform: 'trendyol',
+      trendyolPackageId: packageId,
+      trendyolInvoiceNumber: invoiceNumber,
+      trendyolInvoiceLink: invoiceLink,
+    });
+    erpInvoiceId = erpInvoice._id;
+
+    if (input.mode === 'file') {
+      if (!input.fileBuffer?.length) {
+        throw new StoreInvoiceError('Fatura dosyası gerekli.', 400);
+      }
+      await uploadTrendyolInvoiceFile({
         sellerId: tySettings.sellerId,
         apiKey: tySettings.apiKey,
         apiSecret: tySettings.apiSecret,
-        packageId,
-        status: 'Invoiced',
-        lines,
+        shipmentPackageId: packageId,
+        fileBuffer: input.fileBuffer,
+        fileName: input.fileName || 'fatura.pdf',
+        mimeType: input.mimeType || 'application/pdf',
+        invoiceDateTime,
         invoiceNumber,
       });
+    } else {
+      if (!invoiceLink) throw new StoreInvoiceError('Fatura linki gerekli.', 400);
+      await sendTrendyolInvoiceLink({
+        sellerId: tySettings.sellerId,
+        apiKey: tySettings.apiKey,
+        apiSecret: tySettings.apiSecret,
+        payload: {
+          invoiceLink,
+          shipmentPackageId: Number(packageId),
+          invoiceDateTime,
+          invoiceNumber,
+        },
+      });
     }
-  }
 
-  const invoiceLines = (order.items ?? []).map((item) => ({
-    description: String(item.productName ?? 'Ürün'),
-    quantity: Number(item.quantity) || 1,
-    unitPrice: Number(item.unitPrice) || 0,
-    vatRate: vatPct,
-  }));
-  const totals = calculateInvoiceTotals(invoiceLines);
-  const count = await Invoice.countDocuments();
-  const erpInvoiceNumber = `FTR-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
-  const erpInvoice = await Invoice.create({
-    invoiceNumber: erpInvoiceNumber,
-    orderRef: order.orderNumber,
-    status: 'Kesildi',
-    customerName: order.customerName ?? '',
-    customerTaxId: extractRecipientFromOrder(order).taxId,
-    customerAddress: order.customerAddress ?? '',
-    lines: totals.lines,
-    netTotal: totals.netTotal,
-    vatTotal: totals.vatTotal,
-    grandTotal: totals.grandTotal,
-    externalDocumentId: invoiceUuid || invoiceNumber,
-    platform: 'trendyol',
-    trendyolPackageId: packageId,
-    trendyolInvoiceNumber: invoiceNumber,
-    trendyolInvoiceLink: invoiceLink,
-  });
+    const markInvoiced =
+      input.markInvoiced ?? Boolean(settingsDoc.get('efaturamAutoMarkInvoiced') ?? true);
 
-  await Order.findByIdAndUpdate(order._id, {
-    $set: {
-      trendyolInvoice: {
-        status: 'sent',
-        invoiceNumber,
-        invoiceLink: invoiceLink || undefined,
-        invoiceUuid: invoiceUuid || undefined,
-        invoiceDateTime,
-        sentAt: new Date(),
-        sentVia,
-        erpInvoiceId: erpInvoice._id,
-        lastError: '',
+    if (markInvoiced) {
+      const lines = (order.items ?? [])
+        .map((item) => ({
+          lineId: Number(item.lineId),
+          quantity: Number(item.quantity) || 1,
+        }))
+        .filter((l) => Number.isFinite(l.lineId) && l.lineId > 0);
+      if (lines.length > 0) {
+        await updateTrendyolPackageStatus({
+          sellerId: tySettings.sellerId,
+          apiKey: tySettings.apiKey,
+          apiSecret: tySettings.apiSecret,
+          packageId,
+          status: 'Invoiced',
+          lines,
+          invoiceNumber,
+        });
+      }
+    }
+
+    await Order.findByIdAndUpdate(order._id, {
+      $set: {
+        trendyolInvoice: {
+          status: 'sent',
+          invoiceNumber,
+          invoiceLink: invoiceLink || undefined,
+          invoiceUuid: invoiceUuid || undefined,
+          invoiceDateTime,
+          sentAt: new Date(),
+          sentVia,
+          erpInvoiceId: erpInvoice._id,
+          lastError: '',
+        },
       },
-    },
-  });
+    });
 
-  return {
-    orderNumber: order.orderNumber,
-    packageId,
-    invoiceNumber,
-    invoiceLink,
-    invoiceUuid,
-    sentVia,
-    erpInvoiceId: String(erpInvoice._id),
-    markedInvoiced: markInvoiced,
-  };
+    return {
+      orderNumber: order.orderNumber,
+      packageId,
+      invoiceNumber,
+      invoiceLink,
+      invoiceUuid,
+      sentVia,
+      erpInvoiceId: String(erpInvoice._id),
+      markedInvoiced: markInvoiced,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Fatura gönderilemedi.';
+    if (erpInvoiceId) {
+      await Invoice.findByIdAndUpdate(erpInvoiceId, { $set: { status: 'İptal' } }).catch(
+        () => undefined
+      );
+    }
+    await markTrendyolInvoiceFailed(order._id, message);
+    throw error;
+  }
 }
 
 export async function listPendingTrendyolInvoices(limit = 100) {
   await connectToDatabase();
+  const safeLimit = Math.min(Math.max(1, limit), 200);
   const orders = await Order.find({
     platform: 'trendyol',
     status: { $in: ['Hazırlanıyor', 'Kargolandı', 'Beklemede', 'Yeni'] },
@@ -353,8 +427,11 @@ export async function listPendingTrendyolInvoices(limit = 100) {
       { 'trendyolInvoice.status': { $in: ['', 'pending', 'failed'] } },
     ],
   })
+    .select(
+      'orderNumber status customerName totalAmount packageId createdAt trendyolInvoice items'
+    )
     .sort({ createdAt: -1 })
-    .limit(limit)
+    .limit(safeLimit)
     .lean();
 
   return orders.map((o) => ({

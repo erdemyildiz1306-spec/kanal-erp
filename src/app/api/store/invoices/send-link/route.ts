@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server';
-import { getSessionFromRequest } from '@/lib/auth';
 import { notifyStoreInvoiceOnly } from '@/lib/store-invoice-flow';
+import {
+  assertValidStoreOrderId,
+  enforceInvoiceRateLimit,
+  logInvoiceActivity,
+  requireStoreInvoiceSession,
+  storeInvoiceErrorResponse,
+} from '@/lib/store-invoice-api';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const session = getSessionFromRequest(request);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Oturum gerekli.' }, { status: 401 });
-    }
+    const session = requireStoreInvoiceSession(request);
+    if (session instanceof NextResponse) return session;
+    const limited = enforceInvoiceRateLimit(session.userId);
+    if (limited) return limited;
 
     const body = (await request.json()) as {
       orderId?: string;
@@ -17,9 +23,9 @@ export async function POST(request: Request) {
       invoiceNumber?: string;
     };
 
-    const orderId = String(body.orderId ?? '').trim();
+    const orderId = assertValidStoreOrderId(body.orderId ?? '');
     const invoiceLink = String(body.invoiceLink ?? '').trim();
-    if (!orderId || !invoiceLink) {
+    if (!invoiceLink) {
       return NextResponse.json(
         { success: false, error: 'orderId ve invoiceLink zorunlu.' },
         { status: 400 }
@@ -32,9 +38,15 @@ export async function POST(request: Request) {
       invoiceNumber: body.invoiceNumber,
     });
 
+    await logInvoiceActivity(session, {
+      platform: 'web',
+      action: 'send_link',
+      orderNumber: result.orderNumber,
+      invoiceNumber: body.invoiceNumber,
+    });
+
     return NextResponse.json(result);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Sunucu hatası';
-    return NextResponse.json({ success: false, error: message }, { status: 502 });
+    return storeInvoiceErrorResponse(error);
   }
 }

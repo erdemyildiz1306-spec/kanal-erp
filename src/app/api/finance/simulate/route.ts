@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { simulateProfit } from '@/lib/profit-simulator';
 import { getFinanceDefaults } from '@/lib/finance-defaults';
+import { requireSession } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator', 'accountant']);
+    if (session instanceof NextResponse) return session;
+
     const defaults = await getFinanceDefaults();
     return NextResponse.json({ success: true, defaults });
   } catch (error: unknown) {
@@ -14,6 +18,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator', 'accountant']);
+    if (session instanceof NextResponse) return session;
+
     const body = (await request.json()) as Record<string, unknown>;
     const defaults = await getFinanceDefaults();
 

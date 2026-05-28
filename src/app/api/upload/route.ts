@@ -4,6 +4,8 @@ import path from 'path';
 import { randomBytes } from 'crypto';
 import { put } from '@vercel/blob';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { requireSession } from '@/lib/auth';
+import { detectProductImageMime } from '@/lib/file-mime-verify';
 import {
   isTrendyolPublicImageUrl,
   toAbsolutePublicUrl,
@@ -12,7 +14,7 @@ import {
 
 export const runtime = 'nodejs';
 
-const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const MAX_BYTES = 5 * 1024 * 1024;
 
 function isVercelRuntime(): boolean {
   return Boolean(process.env.VERCEL);
@@ -22,31 +24,39 @@ function canUseLocalUploads(): boolean {
   return !isVercelRuntime();
 }
 
+function extForMime(mime: string): string {
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/webp') return 'webp';
+  if (mime === 'image/gif') return 'gif';
+  return 'jpg';
+}
+
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof NextResponse) {
+      return session;
+    }
+
     const form = await request.formData();
     const file = form.get('file');
     if (!(file instanceof File) || file.size === 0) {
       return NextResponse.json({ error: 'Dosya gerekli.' }, { status: 400 });
     }
-    if (!ALLOWED.has(file.type)) {
-      return NextResponse.json(
-        { error: 'Yalnızca JPEG, PNG, WebP veya GIF yükleyin.' },
-        { status: 400 }
-      );
-    }
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > MAX_BYTES) {
       return NextResponse.json({ error: 'Dosya en fazla 5 MB olabilir.' }, { status: 400 });
     }
 
-    const ext =
-      file.type === 'image/png'
-        ? 'png'
-        : file.type === 'image/webp'
-          ? 'webp'
-          : file.type === 'image/gif'
-            ? 'gif'
-            : 'jpg';
+    const buf = Buffer.from(await file.arrayBuffer());
+    const detectedMime = detectProductImageMime(buf);
+    if (!detectedMime) {
+      return NextResponse.json(
+        { error: 'Yalnızca JPEG, PNG, WebP veya GIF yükleyin (dosya imzası doğrulanamadı).' },
+        { status: 400 }
+      );
+    }
+
+    const ext = extForMime(detectedMime);
     const name = `products/${Date.now()}-${randomBytes(6).toString('hex')}.${ext}`;
 
     const settingsDoc = await resolveSingletonSettingDocument();
@@ -59,10 +69,10 @@ export async function POST(request: Request) {
 
     if (isVercelRuntime() || process.env.BLOB_READ_WRITE_TOKEN) {
       try {
-        const blob = await put(name, file, {
+        const blob = await put(name, buf, {
           access: 'public',
           addRandomSuffix: false,
-          contentType: file.type,
+          contentType: detectedMime,
         });
         publicUrl = blob.url;
         absoluteUrl = blob.url;
@@ -78,7 +88,6 @@ export async function POST(request: Request) {
         );
       }
     } else if (canUseLocalUploads()) {
-      const buf = Buffer.from(await file.arrayBuffer());
       const fileName = name.replace(/^products\//, '');
       const dir = path.join(process.cwd(), 'public', 'uploads', 'products');
       await mkdir(dir, { recursive: true });

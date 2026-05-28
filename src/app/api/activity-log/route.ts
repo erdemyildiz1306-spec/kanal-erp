@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import ActivityLog from '@/models/ActivityLog';
-import { getSessionFromRequest } from '@/lib/auth';
+import { requireSession } from '@/lib/auth';
 
 export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof NextResponse) return session;
+
     await connectToDatabase();
-    getSessionFromRequest(request);
     const { searchParams } = new URL(request.url);
     const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit')) || 50));
     const logs = await ActivityLog.find({}).sort({ createdAt: -1 }).limit(limit).lean();

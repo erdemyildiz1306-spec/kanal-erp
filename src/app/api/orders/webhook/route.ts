@@ -11,10 +11,21 @@ import {
   verifyStoreWebhookSecret,
 } from '@/lib/channel-sync';
 import { buildStoreMetaFromPayload } from '@/lib/store-order-meta';
+import { isDuplicateKeyError } from '@/lib/erp-invoice-number';
+import { checkRateLimit, clientIp } from '@/lib/rate-limit';
 
 /** Trendyol veya özel web sitesinden gelen sipariş bildirimleri (Webhook). */
 export async function POST(request: Request) {
   try {
+    const ip = clientIp(request);
+    const rl = checkRateLimit(`webhook:store:${ip}`, { limit: 120, windowMs: 60_000 });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { success: false, error: 'Webhook rate limit aşıldı.' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } }
+      );
+    }
+
     if (!verifyStoreWebhookSecret(request)) {
       return NextResponse.json(
         { success: false, error: 'Webhook doğrulaması başarısız.' },
@@ -102,7 +113,21 @@ export async function POST(request: Request) {
       ...(storeMeta ? { storeMeta } : {}),
     });
 
-    await newOrder.save();
+    try {
+      await newOrder.save();
+    } catch (saveError) {
+      if (isDuplicateKeyError(saveError)) {
+        const dup = await Order.findOne({ orderNumber });
+        if (dup) {
+          return NextResponse.json({
+            success: true,
+            message: 'Sipariş zaten kayıtlı (eşzamanlı webhook).',
+            orderId: dup._id,
+          });
+        }
+      }
+      throw saveError;
+    }
 
     if (!isTrendyol) {
       const touched = new Set<string>();

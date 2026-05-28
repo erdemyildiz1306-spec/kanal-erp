@@ -6,9 +6,19 @@ import {
   createSessionToken,
   sessionCookieOptions,
 } from '@/lib/auth';
+import { checkRateLimit, clientIp } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIp(request);
+    const rl = checkRateLimit(`login:${ip}`, { limit: 10, windowMs: 60_000 });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { success: false, error: `Çok fazla giriş denemesi. ${rl.retryAfterSec} sn sonra deneyin.` },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } }
+      );
+    }
+
     await connectToDatabase();
     const body = (await request.json()) as {
       email?: string;

@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
-import { getSessionFromRequest } from '@/lib/auth';
+import { requireSession } from '@/lib/auth';
+
+const MAX_ORDERS = 500;
 
 export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof NextResponse) return session;
+
     await connectToDatabase();
-    getSessionFromRequest(request);
     const { searchParams } = new URL(request.url);
     const statusCsv = searchParams.get('status') || 'Beklemede,Hazırlanıyor';
     const statuses = statusCsv.split(',').map((s) => s.trim()).filter(Boolean);
@@ -15,7 +19,9 @@ export async function GET(request: Request) {
       platform: 'trendyol',
       status: { $in: statuses },
     })
+      .select('orderNumber items createdAt')
       .sort({ createdAt: 1 })
+      .limit(MAX_ORDERS)
       .lean();
 
     type Row = {
@@ -49,6 +55,7 @@ export async function GET(request: Request) {
       success: true,
       rows: [...agg.values()],
       ordersScanned: orders.length,
+      capped: orders.length >= MAX_ORDERS,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';

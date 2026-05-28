@@ -12,6 +12,7 @@ import {
   DEFAULT_PRODUCTION_APP_URL,
   getEffectivePublicAppUrl,
 } from '@/lib/public-image-url';
+import { OutboundUrlError, assertSafeOutboundHttpsUrl } from '@/lib/outbound-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ function buildIntegrationHints(doc: {
     trendyolBrandNameSaved: brandName.length > 0,
     efaturamPartnerPasswordSaved: Boolean(toTrimmedString(doc.get('efaturamPartnerPassword'))),
     efaturamCustomerPasswordSaved: Boolean(toTrimmedString(doc.get('efaturamCustomerPassword'))),
+    trendyolWebhookSecretSaved: Boolean(toTrimmedString(doc.get('trendyolWebhookSecret'))),
   };
 }
 
@@ -61,6 +63,7 @@ export async function GET() {
     delete (o as { webApiToken?: string }).webApiToken;
     delete (o as { efaturamPartnerPassword?: string }).efaturamPartnerPassword;
     delete (o as { efaturamCustomerPassword?: string }).efaturamCustomerPassword;
+    delete (o as { trendyolWebhookSecret?: string }).trendyolWebhookSecret;
     (o as { publicAppUrl?: string }).publicAppUrl =
       publicAppUrlStored || String((o as { publicAppUrl?: string }).publicAppUrl ?? '');
 
@@ -122,13 +125,35 @@ export async function PUT(request: Request) {
     }
 
     if (data.webApiUrl !== undefined) {
-      doc.set('webApiUrl', String(data.webApiUrl ?? ''));
+      const baseUrl = String(data.webApiUrl ?? '').trim();
+      if (baseUrl) {
+        try {
+          assertSafeOutboundHttpsUrl(baseUrl, 'Mağaza API taban adresi');
+          doc.set('webApiUrl', baseUrl);
+        } catch (error) {
+          const message =
+            error instanceof OutboundUrlError ? error.message : 'Geçersiz mağaza API adresi.';
+          return NextResponse.json({ error: message }, { status: 400 });
+        }
+      } else {
+        doc.set('webApiUrl', '');
+      }
     }
     if (data.webApiStockPath !== undefined) {
       doc.set('webApiStockPath', String(data.webApiStockPath ?? 'stock-price').trim() || 'stock-price');
     }
     if (data.webApiPushUrl !== undefined) {
-      doc.set('webApiPushUrl', String(data.webApiPushUrl ?? '').trim());
+      const pushUrl = String(data.webApiPushUrl ?? '').trim();
+      if (pushUrl) {
+        try {
+          doc.set('webApiPushUrl', assertSafeOutboundHttpsUrl(pushUrl, 'Stok tam URL'));
+        } catch (error) {
+          const message = error instanceof OutboundUrlError ? error.message : 'Geçersiz stok URL.';
+          return NextResponse.json({ error: message }, { status: 400 });
+        }
+      } else {
+        doc.set('webApiPushUrl', '');
+      }
     }
     if (data.webApiInvoicePath !== undefined) {
       doc.set(
@@ -137,7 +162,21 @@ export async function PUT(request: Request) {
       );
     }
     if (data.webApiInvoicePushUrl !== undefined) {
-      doc.set('webApiInvoicePushUrl', String(data.webApiInvoicePushUrl ?? '').trim());
+      const invoiceUrl = String(data.webApiInvoicePushUrl ?? '').trim();
+      if (invoiceUrl) {
+        try {
+          doc.set(
+            'webApiInvoicePushUrl',
+            assertSafeOutboundHttpsUrl(invoiceUrl, 'Fatura tam URL')
+          );
+        } catch (error) {
+          const message =
+            error instanceof OutboundUrlError ? error.message : 'Geçersiz fatura URL.';
+          return NextResponse.json({ error: message }, { status: 400 });
+        }
+      } else {
+        doc.set('webApiInvoicePushUrl', '');
+      }
     }
     if (data.storeAutoMarkInvoiced !== undefined) {
       doc.set('storeAutoMarkInvoiced', Boolean(data.storeAutoMarkInvoiced));

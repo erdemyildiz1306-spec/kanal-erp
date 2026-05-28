@@ -1,9 +1,11 @@
 import { formatStorePushError } from '@/lib/store-push-error';
+import { OutboundUrlError } from '@/lib/outbound-url';
 import {
   readStorePushSettings,
   resolveStoreInvoiceEndpoint,
   type StorePushSettings,
 } from '@/lib/store-endpoint';
+import { StoreInvoiceError } from '@/lib/store-invoice-errors';
 
 export type StoreInvoicePushPayload = {
   source: 'kanal-erp';
@@ -23,10 +25,27 @@ export async function pushInvoiceToStore(
   token: string,
   payload: StoreInvoicePushPayload
 ) {
-  const endpoint = resolveStoreInvoiceEndpoint(settings);
+  if (!String(token ?? '').trim()) {
+    throw new StoreInvoiceError(
+      'Mağaza API token tanımlı değil. Ayarlar → Mağaza API → Erişim token.',
+      400
+    );
+  }
+
+  let endpoint: string;
+  try {
+    endpoint = resolveStoreInvoiceEndpoint(settings);
+  } catch (error) {
+    if (error instanceof OutboundUrlError) {
+      throw new StoreInvoiceError(error.message, 400);
+    }
+    throw error;
+  }
+
   if (!endpoint) {
-    throw new Error(
-      'Mağaza fatura API adresi tanımlı değil. Ayarlar → Mağaza API → Fatura bildirim yolu.'
+    throw new StoreInvoiceError(
+      'Mağaza fatura API adresi tanımlı değil. Ayarlar → Mağaza API → Fatura bildirim yolu.',
+      400
     );
   }
 
@@ -35,7 +54,7 @@ export async function pushInvoiceToStore(
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token.trim()}`,
     },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(90_000),

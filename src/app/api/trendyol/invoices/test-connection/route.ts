@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { getSessionFromRequest } from '@/lib/auth';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
 import {
   getEfaturamCustomerSession,
@@ -8,15 +7,14 @@ import {
   formatEfaturamError,
 } from '@/lib/trendyol-efaturam';
 import { loadEfaturamSettingsFromDb } from '@/lib/trendyol-invoice-flow';
+import { requireInvoiceSession } from '@/lib/store-invoice-api';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const session = getSessionFromRequest(request);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Oturum gerekli.' }, { status: 401 });
-    }
+    const session = requireInvoiceSession(request);
+    if (session instanceof NextResponse) return session;
 
     const efaturam = await loadEfaturamSettingsFromDb();
     if (!efaturam) {

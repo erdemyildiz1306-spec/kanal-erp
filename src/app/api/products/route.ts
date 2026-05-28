@@ -109,11 +109,13 @@ async function skuBarcodeCollision(
   return { field: 'unknown', value: '' };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await connectToDatabase();
-    const products = await Product.find({}).sort({ createdAt: -1 }).lean();
-    return NextResponse.json({ success: true, products });
+    const { searchParams } = new URL(request.url);
+    const limit = Math.min(Math.max(1, Number(searchParams.get('limit')) || 2000), 5000);
+    const products = await Product.find({}).sort({ createdAt: -1 }).limit(limit).lean();
+    return NextResponse.json({ success: true, products, limit });
   } catch (error: unknown) {
     console.error('GET Products Error:', error);
     const message = error instanceof Error ? error.message : 'Sunucu hatası';

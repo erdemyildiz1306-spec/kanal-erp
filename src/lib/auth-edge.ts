@@ -88,6 +88,7 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith('/api/auth/reset-password')) return true;
   if (pathname.startsWith('/api/auth/register-config')) return true;
   if (pathname === '/api/store/stock-price') return true;
+  if (pathname === '/api/cron/trendyol-sync') return true;
   if (pathname.startsWith('/api/auth/dev-reset-users')) return true;
   if (pathname.startsWith('/api/auth/logout')) return true;
   if (pathname.startsWith('/api/auth/me')) return true;

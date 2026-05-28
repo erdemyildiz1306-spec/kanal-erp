@@ -2,22 +2,18 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveStoreSyncEndpoint } from '@/lib/store-endpoint';
+import { OutboundUrlError } from '@/lib/outbound-url';
+import { requireSession } from '@/lib/auth';
 import { findProductBySkuOrBarcode } from '@/lib/inventory';
 import { buildStoreMetaFromPayload } from '@/lib/store-order-meta';
 
-function joinUrl(base: string, path: string): string {
-  const b = base.trim().replace(/\/?$/, '/');
-  const p = path.replace(/^\//, '');
-  try {
-    return new URL(p, b).href;
-  } catch {
-    return `${b}${p}`;
-  }
-}
-
 /** Mağaza API'sinden sipariş çeker — GET {webApiUrl}/orders */
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof Response) return session;
+
     await connectToDatabase();
     const doc = await resolveSingletonSettingDocument();
     const baseUrl = String(doc.get('webApiUrl') ?? '').trim();
@@ -29,12 +25,25 @@ export async function GET() {
         { status: 400 }
       );
     }
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: 'Mağaza API token tanımlı değil.' },
+        { status: 400 }
+      );
+    }
 
-    const endpoint = joinUrl(baseUrl, 'orders');
+    let endpoint: string;
+    try {
+      endpoint = resolveStoreSyncEndpoint(baseUrl, 'orders', 'Mağaza sipariş senkronu');
+    } catch (error) {
+      const message = error instanceof OutboundUrlError ? error.message : 'Geçersiz mağaza URL.';
+      return NextResponse.json({ success: false, error: message }, { status: 400 });
+    }
+
     const res = await fetch(endpoint, {
       headers: {
         Accept: 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Authorization: `Bearer ${token}`,
       },
       signal: AbortSignal.timeout(90_000),
     });

@@ -2,17 +2,23 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import { calculateInvoiceTotals } from '@/lib/invoice-math';
+import { createErpInvoiceWithRetry } from '@/lib/erp-invoice-number';
+import { requireSession } from '@/lib/auth';
 
 export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator', 'accountant']);
+    if (session instanceof Response) return session;
+
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const q: Record<string, string> = {};
     if (status && status !== 'Tümü') q.status = status;
 
-    const invoices = await Invoice.find(q).sort({ createdAt: -1 });
-    return NextResponse.json({ success: true, invoices });
+    const limit = Math.min(Math.max(1, Number(searchParams.get('limit')) || 500), 2000);
+    const invoices = await Invoice.find(q).sort({ createdAt: -1 }).limit(limit).lean();
+    return NextResponse.json({ success: true, invoices, limit });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -21,6 +27,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator', 'accountant']);
+    if (session instanceof Response) return session;
+
     await connectToDatabase();
     const data = await request.json();
 
@@ -36,12 +45,7 @@ export async function POST(request: Request) {
       }))
     );
 
-    const count = await Invoice.countDocuments();
-    const invoiceNumber =
-      data.invoiceNumber || `FTR-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`;
-
-    const inv = new Invoice({
-      invoiceNumber,
+    const payload = {
       orderRef: data.orderRef || '',
       status: data.status || 'Taslak',
       customerName: data.customerName || '',
@@ -51,9 +55,13 @@ export async function POST(request: Request) {
       netTotal,
       vatTotal,
       grandTotal,
-    });
+    };
 
-    await inv.save();
+    const customNumber = String(data.invoiceNumber ?? '').trim();
+    const inv = customNumber
+      ? await Invoice.create({ ...payload, invoiceNumber: customNumber })
+      : await createErpInvoiceWithRetry(payload);
+
     return NextResponse.json({ success: true, invoice: inv });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';

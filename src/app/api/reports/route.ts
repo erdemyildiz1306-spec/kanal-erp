@@ -3,6 +3,9 @@ import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
 import { computeFinanceAnalytics } from '@/lib/profit-analytics';
+import { requireSession } from '@/lib/auth';
+
+const MAX_ORDERS = 5000;
 
 function rangeStart(range: string): Date {
   const now = new Date();
@@ -27,6 +30,9 @@ function rangeStart(range: string): Date {
 
 export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator', 'accountant']);
+    if (session instanceof NextResponse) return session;
+
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const range = searchParams.get('range') || 'Bu Ay';
@@ -35,7 +41,10 @@ export async function GET(request: Request) {
     const orders = await Order.find({
       createdAt: { $gte: since },
       status: { $ne: 'İptal Edildi' },
-    }).lean();
+    })
+      .sort({ createdAt: -1 })
+      .limit(MAX_ORDERS)
+      .lean();
 
     let totalRevenue = 0;
     let totalProfit = 0;

@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server';
-import { getSessionFromRequest } from '@/lib/auth';
 import { issueStoreInvoiceForOrder } from '@/lib/store-invoice-flow';
+import {
+  assertValidStoreOrderId,
+  enforceInvoiceRateLimit,
+  logInvoiceActivity,
+  requireStoreInvoiceSession,
+  storeInvoiceErrorResponse,
+} from '@/lib/store-invoice-api';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const session = getSessionFromRequest(request);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Oturum gerekli.' }, { status: 401 });
-    }
+    const session = requireStoreInvoiceSession(request);
+    if (session instanceof NextResponse) return session;
+    const limited = enforceInvoiceRateLimit(session.userId);
+    if (limited) return limited;
 
     const body = (await request.json()) as {
       orderId?: string;
@@ -19,11 +25,8 @@ export async function POST(request: Request) {
       markInvoiced?: boolean;
     };
 
-    const orderId = String(body.orderId ?? '').trim();
+    const orderId = assertValidStoreOrderId(body.orderId ?? '');
     const mode = body.mode ?? 'efaturam';
-    if (!orderId) {
-      return NextResponse.json({ success: false, error: 'orderId zorunlu.' }, { status: 400 });
-    }
 
     const result = await issueStoreInvoiceForOrder({
       orderId,
@@ -33,9 +36,16 @@ export async function POST(request: Request) {
       markInvoiced: body.markInvoiced,
     });
 
+    await logInvoiceActivity(session, {
+      platform: 'web',
+      action: 'issue',
+      orderNumber: result.orderNumber,
+      invoiceNumber: result.invoiceNumber,
+      mode,
+    });
+
     return NextResponse.json({ success: true, ...result });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Sunucu hatası';
-    return NextResponse.json({ success: false, error: message }, { status: 502 });
+    return storeInvoiceErrorResponse(error);
   }
 }
