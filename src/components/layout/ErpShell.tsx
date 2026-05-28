@@ -22,7 +22,7 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-[100dvh] overflow-hidden print:min-h-screen print:h-auto print:overflow-visible">
-      <aside className="print:hidden hidden lg:flex h-full w-64 shrink-0">
+      <aside className="print:hidden hidden lg:flex h-full w-[13rem] xl:w-56 shrink-0">
         <Sidebar />
       </aside>
 
@@ -33,7 +33,7 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
         <OrderAutoSync />
         <OrderNotifyPoller />
         <FcmBootstrap enabled={sessionReady} />
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--erp-bg)] px-4 py-4 md:px-6 md:py-6 lg:p-8 safe-pb-nav print:overflow-visible print:p-0 print:pb-0">
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--erp-bg)] px-3 py-4 md:px-5 md:py-5 lg:px-6 lg:py-6 safe-pb-nav print:overflow-visible print:p-0 print:pb-0">
           {children}
         </main>
       </div>

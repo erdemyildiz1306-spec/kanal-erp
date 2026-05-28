@@ -2063,7 +2063,7 @@ export default function ProductsPage() {
         </div>
       )}
 
-      <div className="erp-card p-4 md:p-5">
+      <div className="erp-card p-4 md:p-5 min-w-0">
         <div className="flex flex-col gap-4 mb-4">
           <div className="relative w-full">
             <input
@@ -2252,8 +2252,8 @@ export default function ProductsPage() {
                 );
               })}
             </div>
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left border-collapse text-sm">
+            <div className="hidden md:block overflow-x-auto -mx-1 px-1">
+              <table className="w-full min-w-[720px] text-left border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-500">
                     <th className="py-3 px-2 w-10 text-center" title="Bu sayfadaki ürünler — toplu kanal gönderimi">
@@ -2266,12 +2266,12 @@ export default function ProductsPage() {
                         aria-label="Bu sayfadaki tümünü seç"
                       />
                     </th>
-                  <th className="py-3 px-3 w-12">Görsel</th>
-                  <th className="py-3 px-3 font-medium">Ürün</th>
-                  <th className="py-3 px-3 font-medium">Kodlar</th>
-                  <th className="py-3 px-3 font-medium">Stok</th>
-                  <th className="py-3 px-3 font-medium">Liste / kanal / kâr ₺</th>
-                  <th className="py-3 px-3 font-medium text-right">
+                  <th className="py-3 px-2 w-11">Görsel</th>
+                  <th className="py-3 px-2 font-medium min-w-[9rem] max-w-[12rem]">Ürün</th>
+                  <th className="py-3 px-2 font-medium min-w-[6rem] max-w-[8rem]">Kodlar</th>
+                  <th className="py-3 px-2 font-medium min-w-[5.5rem]">Stok</th>
+                  <th className="py-3 px-2 font-medium min-w-[9rem]">Liste / kanal / kâr ₺</th>
+                  <th className="py-3 px-2 font-medium text-right sticky right-0 z-[2] bg-[var(--erp-surface)] w-12 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.12)]">
                     İşlem
                   </th>
                 </tr>
@@ -2294,7 +2294,7 @@ export default function ProductsPage() {
                     <tr
                       key={product._id}
                       id={`product-row-${product._id}`}
-                      className={`border-b border-slate-100 hover:bg-slate-50 ${
+                      className={`group border-b border-slate-100 hover:bg-slate-50 ${
                         highlightProductId === String(product._id)
                           ? "bg-blue-50 ring-2 ring-inset ring-blue-300"
                           : ""
@@ -2314,7 +2314,7 @@ export default function ProductsPage() {
                           aria-label={`Seç: ${product.name}`}
                         />
                       </td>
-                      <td className="py-3 px-3 align-middle">
+                      <td className="py-3 px-2 align-middle">
                         <div className="w-10 h-10 rounded-lg bg-slate-100 overflow-hidden flex items-center justify-center">
                           {thumb ? (
                             <img
@@ -2327,9 +2327,9 @@ export default function ProductsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-3">
-                        <div className="font-medium text-slate-800 flex items-center gap-2">
-                          {product.name}
+                      <td className="py-3 px-2 max-w-[12rem]">
+                        <div className="font-medium text-slate-800 flex items-center gap-2 min-w-0">
+                          <span className="truncate">{product.name}</span>
                           {product.hasVariants && (
                             <span title="Varyantlı ürün">
                               <Layers
@@ -2339,13 +2339,13 @@ export default function ProductsPage() {
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-slate-400 truncate max-w-[200px]">
+                        <div className="text-xs text-slate-400 truncate max-w-[11rem]">
                           {product.category}
                         </div>
                         {product.hasVariants &&
                           Array.isArray(product.variants) &&
                           product.variants.length > 0 && (
-                            <div className="mt-1.5 text-[11px] text-slate-600 space-y-0.5 max-w-[220px]">
+                            <div className="mt-1.5 text-[11px] text-slate-600 space-y-0.5 max-w-[11rem]">
                               {product.variants.map((v: any, idx: number) => {
                                 const tag = [v.sizeLabel, v.colorLabel]
                                   .filter(
@@ -2375,11 +2375,11 @@ export default function ProductsPage() {
                             </div>
                           )}
                       </td>
-                      <td className="py-3 px-3 font-mono text-xs text-slate-600">
-                        <div>{product.sku}</div>
-                        <div>{product.barcode}</div>
+                      <td className="py-3 px-2 font-mono text-xs text-slate-600 max-w-[8rem]">
+                        <div className="truncate" title={product.sku}>{product.sku}</div>
+                        <div className="truncate" title={product.barcode}>{product.barcode}</div>
                       </td>
-                      <td className="py-3 px-3">
+                      <td className="py-3 px-2">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-1 flex-wrap">
                             <span
@@ -2432,7 +2432,7 @@ export default function ProductsPage() {
                             )}
                         </div>
                       </td>
-                      <td className="py-3 px-3">
+                      <td className="py-3 px-2">
                         <div className="text-slate-800 font-medium">
                           Liste ₺{(Number(product.price) || 0).toFixed(2)}
                         </div>
@@ -2467,7 +2467,7 @@ export default function ProductsPage() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="py-3 px-3 text-right relative">
+                      <td className="py-3 px-2 text-right sticky right-0 z-[1] bg-[var(--erp-surface)] group-hover:bg-slate-50 w-12 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.08)] relative">
                         <button
                           type="button"
                           className="p-2 text-slate-400 hover:text-slate-600 rounded-md"
@@ -2480,7 +2480,7 @@ export default function ProductsPage() {
                           <MoreHorizontal size={18} />
                         </button>
                         {activeMenuId === product._id && (
-                          <div className="absolute right-10 top-8 w-40 bg-white rounded-lg shadow-lg border z-10 py-1">
+                          <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border z-20 py-1">
                             <button
                               type="button"
                               className="block w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
