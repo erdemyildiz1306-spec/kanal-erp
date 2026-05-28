@@ -22,7 +22,7 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-[100dvh] overflow-hidden print:min-h-screen print:h-auto print:overflow-visible">
-      <aside className="print:hidden hidden lg:flex h-full w-[13rem] xl:w-56 shrink-0">
+      <aside className="print:hidden hidden lg:flex h-full w-16 xl:w-52 shrink-0">
         <Sidebar />
       </aside>
 

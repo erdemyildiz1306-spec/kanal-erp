@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   X,
   ScanBarcode,
+  Pencil,
+  Package,
 } from "lucide-react";
 import {
   generateEan13,
@@ -2252,11 +2254,20 @@ export default function ProductsPage() {
                 );
               })}
             </div>
-            <div className="hidden md:block overflow-x-auto -mx-1 px-1">
-              <table className="w-full min-w-[720px] text-left border-collapse text-sm">
+            <div className="hidden lg:block w-full min-w-0">
+              <table className="w-full table-fixed text-left border-collapse text-sm">
+                <colgroup>
+                  <col className="w-9" />
+                  <col className="w-11" />
+                  <col className="w-[28%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[4.5rem]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-500">
-                    <th className="py-3 px-2 w-10 text-center" title="Bu sayfadaki ürünler — toplu kanal gönderimi">
+                    <th className="py-2.5 px-1 text-center" title="Bu sayfadaki ürünler — toplu kanal gönderimi">
                       <input
                         type="checkbox"
                         className="rounded border-slate-300"
@@ -2266,14 +2277,12 @@ export default function ProductsPage() {
                         aria-label="Bu sayfadaki tümünü seç"
                       />
                     </th>
-                  <th className="py-3 px-2 w-11">Görsel</th>
-                  <th className="py-3 px-2 font-medium min-w-[9rem] max-w-[12rem]">Ürün</th>
-                  <th className="py-3 px-2 font-medium min-w-[6rem] max-w-[8rem]">Kodlar</th>
-                  <th className="py-3 px-2 font-medium min-w-[5.5rem]">Stok</th>
-                  <th className="py-3 px-2 font-medium min-w-[9rem]">Liste / kanal / kâr ₺</th>
-                  <th className="py-3 px-2 font-medium text-right sticky right-0 z-[2] bg-[var(--erp-surface)] w-12 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.12)]">
-                    İşlem
-                  </th>
+                  <th className="py-2.5 px-1">Görsel</th>
+                  <th className="py-2.5 px-2 font-medium">Ürün</th>
+                  <th className="py-2.5 px-2 font-medium">Kodlar</th>
+                  <th className="py-2.5 px-2 font-medium">Stok</th>
+                  <th className="py-2.5 px-2 font-medium">Fiyat / kâr</th>
+                  <th className="py-2.5 px-1 font-medium text-right">İşlem</th>
                 </tr>
               </thead>
               <tbody>
@@ -2294,7 +2303,7 @@ export default function ProductsPage() {
                     <tr
                       key={product._id}
                       id={`product-row-${product._id}`}
-                      className={`group border-b border-slate-100 hover:bg-slate-50 ${
+                      className={`border-b border-slate-100 hover:bg-slate-50 ${
                         highlightProductId === String(product._id)
                           ? "bg-blue-50 ring-2 ring-inset ring-blue-300"
                           : ""
@@ -2327,9 +2336,9 @@ export default function ProductsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-2 max-w-[12rem]">
-                        <div className="font-medium text-slate-800 flex items-center gap-2 min-w-0">
-                          <span className="truncate">{product.name}</span>
+                      <td className="py-2.5 px-2 overflow-hidden align-top">
+                        <div className="font-medium text-slate-800 flex items-center gap-1 min-w-0">
+                          <span className="truncate" title={product.name}>{product.name}</span>
                           {product.hasVariants && (
                             <span title="Varyantlı ürün">
                               <Layers
@@ -2339,14 +2348,14 @@ export default function ProductsPage() {
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-slate-400 truncate max-w-[11rem]">
+                        <div className="text-xs text-slate-400 truncate" title={product.category}>
                           {product.category}
                         </div>
                         {product.hasVariants &&
                           Array.isArray(product.variants) &&
                           product.variants.length > 0 && (
-                            <div className="mt-1.5 text-[11px] text-slate-600 space-y-0.5 max-w-[11rem]">
-                              {product.variants.map((v: any, idx: number) => {
+                            <div className="mt-1 text-[10px] text-slate-600 space-y-0.5 overflow-hidden">
+                              {product.variants.slice(0, 4).map((v: any, idx: number) => {
                                 const tag = [v.sizeLabel, v.colorLabel]
                                   .filter(
                                     (x: string) =>
@@ -2372,18 +2381,21 @@ export default function ProductsPage() {
                                   </div>
                                 );
                               })}
+                              {product.variants.length > 4 ? (
+                                <div className="text-slate-400">+{product.variants.length - 4} varyant</div>
+                              ) : null}
                             </div>
                           )}
                       </td>
-                      <td className="py-3 px-2 font-mono text-xs text-slate-600 max-w-[8rem]">
+                      <td className="py-2.5 px-2 font-mono text-[11px] text-slate-600 overflow-hidden align-top">
                         <div className="truncate" title={product.sku}>{product.sku}</div>
                         <div className="truncate" title={product.barcode}>{product.barcode}</div>
                       </td>
-                      <td className="py-3 px-2">
-                        <div className="flex flex-col gap-1">
+                      <td className="py-2.5 px-2 align-top">
+                        <div className="flex flex-col gap-0.5">
                           <div className="flex items-center gap-1 flex-wrap">
                             <span
-                              className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              className={`inline-flex px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${
                                 product.stock > (product.safetyStock ?? 2)
                                   ? "bg-green-100 text-green-800"
                                   : "bg-red-100 text-red-800"
@@ -2393,129 +2405,68 @@ export default function ProductsPage() {
                               {product.hasVariants &&
                                 Array.isArray(product.variants) &&
                                 product.variants.length > 1 && (
-                                  <span className="font-normal opacity-80 ml-0.5">
-                                    (toplam)
-                                  </span>
+                                  <span className="font-normal opacity-80 ml-0.5">(t)</span>
                                 )}
                             </span>
                             {product.stock <= (product.safetyStock ?? 2) && (
                               <AlertTriangle
-                                size={14}
-                                className="text-red-500"
+                                size={13}
+                                className="text-red-500 shrink-0"
                               />
                             )}
                             <span className="text-[10px] text-slate-400">
-                              sync:{syncStock}
+                              s:{syncStock}
                             </span>
                           </div>
-                          {product.hasVariants &&
-                            Array.isArray(product.variants) &&
-                            product.variants.length > 0 && (
-                              <div className="text-[10px] text-slate-500 leading-snug">
-                                {product.variants.map((v: any, i: number) => {
-                                  const tag = [v.sizeLabel, v.colorLabel]
-                                    .filter(
-                                      (x: string) =>
-                                        x &&
-                                        String(x).trim() &&
-                                        x !== "—"
-                                    )
-                                    .join("/");
-                                  const short = tag || String(v.sku || "").slice(-8);
-                                  return (
-                                    <span key={`${v.sku}-${v.barcode}-${i}`} className="mr-1.5 whitespace-nowrap">
-                                      {short}:{v.stock ?? 0}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
                         </div>
                       </td>
-                      <td className="py-3 px-2">
-                        <div className="text-slate-800 font-medium">
-                          Liste ₺{(Number(product.price) || 0).toFixed(2)}
-                        </div>
-                        <div className="text-[11px] text-orange-700">
-                          Trendyol ₺
-                          {(
-                            Number(product.prices?.trendyol) || Number(product.price) || 0
-                          ).toFixed(2)}
-                        </div>
-                        <div className="text-[11px] text-blue-700">
-                          Web ₺
-                          {(
-                            Number(product.prices?.website) || Number(product.price) || 0
-                          ).toFixed(2)}
-                        </div>
-                        <div
-                          className={`text-[11px] font-semibold mt-1 ${
+                      <td className="py-2.5 px-2 align-top overflow-hidden">
+                        <p className="text-[11px] text-slate-800 truncate" title={`Liste ${listPrice} TY ${tyPrice}`}>
+                          L ₺{listPrice.toFixed(0)} · TY ₺{tyPrice.toFixed(0)}
+                        </p>
+                        <p
+                          className={`text-[11px] font-semibold truncate ${
                             unitNetKar >= 0 ? "text-green-700" : "text-red-600"
                           }`}
                         >
-                          Net kâr ₺{unitNetKar.toFixed(2)}/ad.
-                        </div>
+                          Kâr ₺{unitNetKar.toFixed(2)}/ad
+                        </p>
                         {stockQty > 0 ? (
-                          <div className="text-[10px] text-green-600">
-                            Stok kârı ({stockQty} ad.): ₺
-                            {stockNetKar.toFixed(2)}
-                          </div>
+                          <p className="text-[10px] text-green-600 truncate">
+                            Stok: ₺{stockNetKar.toFixed(0)}
+                          </p>
                         ) : null}
                         {cost <= 0 ? (
-                          <div className="text-[10px] text-amber-600">
-                            Maliyet girilmedi
-                          </div>
+                          <p className="text-[10px] text-amber-600 truncate">Maliyet yok</p>
                         ) : null}
                       </td>
-                      <td className="py-3 px-2 text-right sticky right-0 z-[1] bg-[var(--erp-surface)] group-hover:bg-slate-50 w-12 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.08)] relative">
-                        <button
-                          type="button"
-                          className="p-2 text-slate-400 hover:text-slate-600 rounded-md"
-                          onClick={() =>
-                            setActiveMenuId(
-                              activeMenuId === product._id ? null : product._id
-                            )
-                          }
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
-                        {activeMenuId === product._id && (
-                          <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border z-20 py-1">
-                            <button
-                              type="button"
-                              className="block w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
-                              onClick={() => {
-                                handleActionClick("Düzenle", product);
-                                setActiveMenuId(null);
-                              }}
-                            >
-                              Düzenle
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
-                              onClick={() => {
-                                handleActionClick(
-                                  "Stok Güncelle",
-                                  product
-                                );
-                                setActiveMenuId(null);
-                              }}
-                            >
-                              Stok
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                              onClick={() => {
-                                handleActionClick("Sil", product);
-                                setActiveMenuId(null);
-                              }}
-                            >
-                              Sil
-                            </button>
-                          </div>
-                        )}
+                      <td className="py-2.5 px-1 align-middle">
+                        <div className="flex items-center justify-end gap-0.5">
+                          <button
+                            type="button"
+                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-md"
+                            title="Düzenle"
+                            onClick={() => handleActionClick("Düzenle", product)}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md"
+                            title="Stok güncelle"
+                            onClick={() => handleActionClick("Stok Güncelle", product)}
+                          >
+                            <Package size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-md"
+                            title="Sil"
+                            onClick={() => handleActionClick("Sil", product)}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
