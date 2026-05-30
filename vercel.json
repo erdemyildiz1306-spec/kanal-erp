@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/trendyol-sync",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/cron/license-check",
