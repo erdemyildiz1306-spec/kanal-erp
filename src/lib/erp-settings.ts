@@ -1,6 +1,9 @@
 import connectToDatabase from '@/lib/mongodb';
 import Setting from '@/models/Setting';
 import mongoose from 'mongoose';
+import { DEFAULT_TENANT_ID, normalizeTenantId } from '@/lib/tenant';
+
+export { DEFAULT_TENANT_ID };
 
 function parseStoredBrandId(raw: unknown): number {
   if (raw === null || raw === undefined) return 0;
@@ -14,18 +17,56 @@ function parseStoredBrandId(raw: unknown): number {
 }
 
 /**
- * Ayar koleksiyonunda tek doğru kaynak belge bırakır.
- * Birden fazla Setting kaydı oluşmuşsa Trendyol alanları birleştirilir, fazlalıklar silinir.
+ * Kuruluş (tenant) bazlı ayar belgesi — yoksa oluşturur.
  */
+export async function resolveSettingDocument(
+  tenantId?: string
+): Promise<mongoose.Document> {
+  await connectToDatabase();
+  const tid = normalizeTenantId(tenantId);
+
+  let doc = await Setting.findOne({ tenantId: tid });
+  if (!doc && tid === DEFAULT_TENANT_ID) {
+    doc = await Setting.findOne({ settingsId: 'global', tenantId: { $exists: false } });
+    if (doc && !String(doc.get('tenantId') ?? '').trim()) {
+      doc.set('tenantId', DEFAULT_TENANT_ID);
+      await doc.save();
+    }
+  }
+  if (!doc) {
+    doc = await Setting.create({
+      settingsId: 'global',
+      tenantId: tid,
+    });
+    return doc;
+  }
+
+  if (String(doc.get('settingsId') ?? '').trim() !== 'global') {
+    doc.set('settingsId', 'global');
+  }
+  if (String(doc.get('tenantId') ?? '').trim() !== tid) {
+    doc.set('tenantId', tid);
+  }
+
+  if (doc.isModified()) {
+    await doc.save();
+  }
+
+  const fresh = await Setting.findById(doc._id);
+  return fresh ?? doc;
+}
+
+/** @deprecated — resolveSettingDocument(tenantId) kullanın */
 export async function resolveSingletonSettingDocument(): Promise<mongoose.Document> {
   await connectToDatabase();
 
-  let all = await Setting.find({});
+  let all = await Setting.find({ tenantId: DEFAULT_TENANT_ID });
   if (all.length === 0) {
-    const created = await Setting.create({
-      settingsId: 'global',
-    });
-    return created;
+    const legacy = await Setting.find({ settingsId: 'global' });
+    all = legacy.length ? legacy : all;
+  }
+  if (all.length === 0) {
+    return resolveSettingDocument(DEFAULT_TENANT_ID);
   }
 
   const sorted = [...all].sort((a, b) => {
@@ -47,6 +88,9 @@ export async function resolveSingletonSettingDocument(): Promise<mongoose.Docume
 
   if (String(primary.get('settingsId') ?? '').trim() !== 'global') {
     primary.set('settingsId', 'global');
+  }
+  if (String(primary.get('tenantId') ?? '').trim() !== DEFAULT_TENANT_ID) {
+    primary.set('tenantId', DEFAULT_TENANT_ID);
   }
 
   const mergeField = (
@@ -102,6 +146,7 @@ export async function resolveSingletonSettingDocument(): Promise<mongoose.Docume
 
   if (hadDuplicates) {
     await Setting.deleteMany({
+      tenantId: DEFAULT_TENANT_ID,
       _id: { $nin: [primary._id] },
     }).exec();
   }

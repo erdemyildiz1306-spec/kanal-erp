@@ -4,6 +4,9 @@ import {
   requireInvoiceSession,
   storeInvoiceErrorResponse,
 } from '@/lib/store-invoice-api';
+import connectToDatabase from '@/lib/mongodb';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { tenantScope } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +15,14 @@ export async function GET(request: Request) {
     const session = requireInvoiceSession(request);
     if (session instanceof NextResponse) return session;
 
-    const orders = await listPendingTrendyolInvoices(150);
+    const { tenantId } = tenantScope(session);
+    await connectToDatabase();
+    const mod = await assertIntegrationModuleEnabled('trendyolEfaturam', tenantId);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
+
+    const orders = await listPendingTrendyolInvoices(150, tenantId);
     return NextResponse.json({ success: true, orders });
   } catch (error: unknown) {
     return storeInvoiceErrorResponse(error);

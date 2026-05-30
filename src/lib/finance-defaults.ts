@@ -1,4 +1,4 @@
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import {
   DEFAULT_CARGO_TARIFF,
   normalizeCargoTariff,
@@ -25,8 +25,8 @@ export const FALLBACK_FINANCE_DEFAULTS: FinanceDefaults = {
   cargoTariff: DEFAULT_CARGO_TARIFF,
 };
 
-export async function getFinanceDefaults(): Promise<FinanceDefaults> {
-  const doc = await resolveSingletonSettingDocument();
+export async function getFinanceDefaults(tenantId?: string): Promise<FinanceDefaults> {
+  const doc = await resolveSettingDocument(tenantId);
   const commission = Number(doc.get('financeDefaultCommissionPct'));
   const stopaj = Number(doc.get('financeStopajRatePct'));
   const service = Number(doc.get('financeServiceFeePerOrder'));

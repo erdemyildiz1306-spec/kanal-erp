@@ -5,22 +5,26 @@ import Product from '@/models/Product';
 import NotificationState from '@/models/NotificationState';
 import OrderEvent from '@/models/OrderEvent';
 import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 type NotifKind = 'order' | 'stock' | 'info' | 'order-event';
 
-async function buildNotificationItems() {
+async function buildNotificationItems(tenantId: string) {
   const since = new Date(Date.now() - 48 * 60 * 60 * 1000);
 
   const pendingOrders = await Order.countDocuments({
+    tenantId,
     status: { $in: ['Beklemede', 'Yeni'] },
     createdAt: { $gte: since },
   });
 
   const lowStock = await Product.countDocuments({
+    tenantId,
     $expr: { $lte: ['$stock', { $ifNull: ['$safetyStock', 2] }] },
   });
 
   const recentEvents = await OrderEvent.find({
+    tenantId,
     type: 'order-created',
     createdAt: { $gte: since },
   })
@@ -124,7 +128,8 @@ export async function GET(request: Request) {
     }
 
     await connectToDatabase();
-    const { items, counts } = await buildNotificationItems();
+    const { tenantId } = tenantScope(session);
+    const { items, counts } = await buildNotificationItems(tenantId);
 
     const states = await NotificationState.find({ userId: session.userId }).lean();
     const merged = applyUserState(items, states);
@@ -150,8 +155,9 @@ export async function PATCH(request: Request) {
     }
 
     await connectToDatabase();
+    const { tenantId } = tenantScope(session);
     const body = (await request.json()) as { action?: string; id?: string };
-    const { items } = await buildNotificationItems();
+    const { items } = await buildNotificationItems(tenantId);
 
     if (body.action === 'readAll') {
       for (const item of items) {
@@ -217,7 +223,8 @@ export async function DELETE(request: Request) {
     }
 
     await connectToDatabase();
-    const { items } = await buildNotificationItems();
+    const { tenantId } = tenantScope(session);
+    const { items } = await buildNotificationItems(tenantId);
     const item = items.find((i) => i.id === id);
     if (!item) {
       return NextResponse.json({ success: false, error: 'Bildirim bulunamadı.' }, { status: 404 });

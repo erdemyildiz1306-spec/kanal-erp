@@ -5,16 +5,18 @@ import { findProductBySkuOrBarcode, adjustProductStock, findProductByScannedCode
 import { barcodeLookupKeys } from '@/lib/barcode-normalize';
 import { pushProductStockToChannels } from '@/lib/channel-sync';
 import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 
-async function resolveProductMatch(sku: string, barcode: string) {
+async function resolveProductMatch(sku: string, barcode: string, tenantId?: string) {
   const barcodeKeys = barcode ? barcodeLookupKeys(barcode) : [];
   for (const key of barcodeKeys.length ? barcodeKeys : ['']) {
     if (!key && !sku) continue;
-    const match = await findProductBySkuOrBarcode(sku, key || undefined);
+    const match = await findProductBySkuOrBarcode(sku, key || undefined, tenantId);
     if (match) return match;
   }
   if (sku && barcode) {
-    return findProductBySkuOrBarcode(sku, undefined);
+    return findProductBySkuOrBarcode(sku, undefined, tenantId);
   }
   return null;
 }
@@ -22,6 +24,8 @@ async function resolveProductMatch(sku: string, barcode: string) {
 export async function GET(request: Request) {
   try {
     await connectToDatabase();
+    const session = getSessionFromRequest(request);
+    const tenantId = tenantScope(session).tenantId;
     const { searchParams } = new URL(request.url);
     const barcodeList = searchParams
       .getAll('barcode')
@@ -40,14 +44,14 @@ export async function GET(request: Request) {
 
     let match = null;
     for (const code of barcodeList.length ? barcodeList : [barcode]) {
-      match = await resolveProductMatch(sku, code);
+      match = await resolveProductMatch(sku, code, tenantId);
       if (match) break;
     }
     if (!match && sku) {
-      match = await resolveProductMatch(sku, '');
+      match = await resolveProductMatch(sku, '', tenantId);
     }
     if (!match && looseQ) {
-      match = await findProductByScannedCode(looseQ);
+      match = await findProductByScannedCode(looseQ, tenantId);
     }
     if (!match) {
       const scanCode =
@@ -101,6 +105,8 @@ export async function POST(request: Request) {
       note?: string;
     };
 
+    const tenantId = tenantScope(session).tenantId;
+
     const barcode = String(body.barcode ?? '').trim();
     const sku = String(body.sku ?? '').trim();
     const delta = Math.floor(Number(body.delta) || 0);
@@ -112,9 +118,9 @@ export async function POST(request: Request) {
       );
     }
 
-    let match = await resolveProductMatch(sku, barcode);
+    let match = await resolveProductMatch(sku, barcode, tenantId);
     if (!match) {
-      match = await findProductByScannedCode(barcode || sku);
+      match = await findProductByScannedCode(barcode || sku, tenantId);
     }
     if (!match) {
       return NextResponse.json(

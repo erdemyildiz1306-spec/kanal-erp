@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 export async function GET(request: Request) {
   try {
@@ -9,7 +10,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Müşteri oturumu gerekli.' }, { status: 401 });
     }
 
-    const doc = await resolveSingletonSettingDocument();
+    const doc = await resolveSettingDocument(tenantScope(session).tenantId);
     return NextResponse.json({
       success: true,
       contact: {

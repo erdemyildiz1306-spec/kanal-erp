@@ -7,10 +7,16 @@ import {
 } from '@/lib/trendyol';
 import axios from 'axios';
 import { TrendyolEndpoints } from '@/lib/trendyol-endpoints';
+import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 /** Trendyol batch sonucunu teşhis için döner (yayımlama sonrası kontrol) */
 export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof NextResponse) return session;
+    const { tenantId } = tenantScope(session);
+
     const { searchParams } = new URL(request.url);
     const batchRequestId = String(searchParams.get('batchRequestId') ?? '').trim();
     if (!batchRequestId) {
@@ -20,7 +26,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const settings = await getTrendyolSettings();
+    const settings = await getTrendyolSettings(tenantId);
     const url = TrendyolEndpoints.batchRequestResult(
       settings.sellerId,
       batchRequestId

@@ -3,11 +3,17 @@ import bcrypt from 'bcryptjs';
 import connectToDatabase from '@/lib/mongodb';
 import User from '@/models/User';
 import { requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin']);
+    if (session instanceof Response) return session;
+
     await connectToDatabase();
-    const users = await User.find({}).select('-passwordHash').sort({ createdAt: -1 });
+    const users = await User.find(tenantScope(session))
+      .select('-passwordHash')
+      .sort({ createdAt: -1 });
     return NextResponse.json({ success: true, users });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';
@@ -20,6 +26,7 @@ export async function POST(request: Request) {
     const session = requireSession(request, ['admin']);
     if (session instanceof Response) return session;
 
+    const { tenantId } = tenantScope(session);
     await connectToDatabase();
     const data = await request.json();
     const email = String(data.email || '').toLowerCase().trim();
@@ -34,13 +41,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const exists = await User.findOne({ email });
+    const exists = await User.findOne({ tenantId, email });
     if (exists) {
       return NextResponse.json({ error: 'Bu e-posta zaten kayıtlı.' }, { status: 409 });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
+      tenantId,
       email,
       name,
       passwordHash,

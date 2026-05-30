@@ -13,15 +13,15 @@ const VariantSchema = new mongoose.Schema(
 
 const ProductSchema = new mongoose.Schema(
   {
+    tenantId: { type: String, default: 'default', index: true },
     name: { type: String, required: true },
     /** Ürün açıklaması (liste / kanal kullanımları için) */
     description: { type: String, default: '' },
-    sku: { type: String, required: true, unique: true },
+    sku: { type: String, required: true },
     /** Tekil üründe kullanılır; varyantlı modda bileşik tanıma için sentinel veya ilk varyanta kopyalanabilir */
     barcode: {
       type: String,
       default: '',
-      unique: true,
       sparse: true,
     },
 
@@ -67,7 +67,7 @@ const ProductSchema = new mongoose.Schema(
       },
     ],
 
-    platforms: [{ type: String, enum: ['trendyol', 'web'] }],
+    platforms: [{ type: String, enum: ['trendyol', 'web', 'wordpress'] }],
 
     integrations: {
       trendyol: {
@@ -76,8 +76,14 @@ const ProductSchema = new mongoose.Schema(
         productMainId: { type: String, default: '' },
         approved: { type: Boolean, default: false },
         syncActive: { type: Boolean, default: true },
+        /** TY satışta / stoklu listing */
+        listingActive: { type: Boolean, default: true },
       },
       web: {
+        productId: { type: String, default: '' },
+        syncActive: { type: Boolean, default: true },
+      },
+      wordpress: {
         productId: { type: String, default: '' },
         syncActive: { type: Boolean, default: true },
       },
@@ -86,6 +92,8 @@ const ProductSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+ProductSchema.index({ tenantId: 1, sku: 1 }, { unique: true });
+ProductSchema.index({ tenantId: 1, barcode: 1 }, { unique: true, sparse: true });
 ProductSchema.index({ createdAt: -1 });
 ProductSchema.index({ active: 1, customerVisible: 1, name: 1 });
 

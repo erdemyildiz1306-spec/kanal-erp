@@ -17,6 +17,8 @@ import {
 } from './trendyol-finance-classify';
 import CargoCharge from '@/models/CargoCharge';
 import { syncOrderFinanceFields } from '@/lib/profit-detail';
+import { mergeTenant, orderByNumber } from '@/lib/tenant-query';
+import { normalizeTenantId, DEFAULT_TENANT_ID } from '@/lib/tenant';
 
 const MS_DAY = 86_400_000;
 const MAX_WINDOW_MS = 15 * MS_DAY;
@@ -71,11 +73,13 @@ function toDate(ms: unknown): Date {
 
 function mapRow(
   row: FinanceRow,
-  source: 'settlement' | 'otherfinancial'
+  source: 'settlement' | 'otherfinancial',
+  tenantId: string
 ): Record<string, unknown> | null {
   const trendyolId = String(row.id ?? '').trim();
   if (!trendyolId) return null;
   return {
+    tenantId: normalizeTenantId(tenantId),
     trendyolId,
     source,
     transactionType: String(row.transactionType ?? ''),
@@ -116,6 +120,7 @@ async function syncTypeWindow(
   transactionType: string,
   startMs: number,
   endMs: number,
+  tenantId: string,
   extraParams?: Record<string, string>
 ): Promise<number> {
   let page = 0;
@@ -136,10 +141,10 @@ async function syncTypeWindow(
     totalPages = Math.max(1, Number(data.totalPages) || 1);
 
     for (const row of rows) {
-      const doc = mapRow(row, source);
+      const doc = mapRow(row, source, tenantId);
       if (!doc) continue;
       await FinancialTransaction.findOneAndUpdate(
-        { trendyolId: doc.trendyolId },
+        { tenantId: normalizeTenantId(tenantId), trendyolId: doc.trendyolId },
         { $set: doc },
         { upsert: true }
       );
@@ -164,8 +169,10 @@ function dateWindows(start: Date, end: Date): Array<{ startMs: number; endMs: nu
 }
 
 /** Siparişlere settlement Sale verilerinden komisyon / hakediş yansıt */
-async function applySaleFinanceToOrders(since: Date): Promise<number> {
+async function applySaleFinanceToOrders(since: Date, tenantId?: string): Promise<number> {
+  const tid = normalizeTenantId(tenantId);
   const sales = await FinancialTransaction.find({
+    tenantId: tid,
     transactionType: { $in: ['Sale', 'Satış'] },
     transactionDate: { $gte: since },
     orderNumber: { $ne: '' },
@@ -187,21 +194,18 @@ async function applySaleFinanceToOrders(since: Date): Promise<number> {
 
   let updated = 0;
   for (const [orderNumber, fin] of byOrder) {
-    const order = await Order.findOne({ orderNumber }).lean();
+    const order = await Order.findOne(mergeTenant(tenantId, { orderNumber })).lean();
     if (!order) continue;
     const cost = Number(order.costAmount) || 0;
     const netProfit = fin.sellerRevenue - cost;
-    await Order.updateOne(
-      { orderNumber },
-      {
-        $set: {
-          trendyolCommission: fin.commission,
-          trendyolSellerRevenue: fin.sellerRevenue,
-          netProfitAmount: netProfit,
-          financeSyncedAt: new Date(),
-        },
-      }
-    );
+    await Order.updateOne(orderByNumber(order.tenantId ?? tenantId, orderNumber), {
+      $set: {
+        trendyolCommission: fin.commission,
+        trendyolSellerRevenue: fin.sellerRevenue,
+        netProfitAmount: netProfit,
+        financeSyncedAt: new Date(),
+      },
+    });
     updated++;
   }
   return updated;
@@ -266,9 +270,12 @@ async function fetchCargoInvoiceItemsTotal(
 async function enrichCargoInvoicesFromApi(
   since: Date,
   sellerId: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  tenantId?: string
 ): Promise<number> {
+  const tid = normalizeTenantId(tenantId);
   const rows = await FinancialTransaction.find({
+    tenantId: tid,
     source: 'otherfinancial',
     transactionDate: { $gte: since },
     $or: [
@@ -297,9 +304,10 @@ async function enrichCargoInvoicesFromApi(
           if (!orderNumber || amount <= 0) continue;
           const parcelUniqueId = String(item.parcelUniqueId ?? `${orderNumber}-${amount}`);
           await CargoCharge.findOneAndUpdate(
-            { orderNumber, invoiceId, parcelUniqueId },
+            { tenantId: tid, orderNumber, invoiceId, parcelUniqueId },
             {
               $set: {
+                tenantId: tid,
                 orderNumber,
                 amount,
                 chargeType: String(item.shipmentPackageType ?? ''),
@@ -319,7 +327,7 @@ async function enrichCargoInvoicesFromApi(
     }
 
     await FinancialTransaction.updateOne(
-      { trendyolId: row.trendyolId },
+      { tenantId: tid, trendyolId: row.trendyolId },
       { $set: { cargoInvoiceTotal: cargoTotal } }
     );
     enriched++;
@@ -328,8 +336,10 @@ async function enrichCargoInvoicesFromApi(
 }
 
 /** Finans ekstresindeki reklam kalemlerini AdSpendEntry olarak kaydet */
-async function syncAdSpendFromFinance(since: Date): Promise<number> {
+async function syncAdSpendFromFinance(since: Date, tenantId?: string): Promise<number> {
+  const tid = normalizeTenantId(tenantId);
   const rows = await FinancialTransaction.find({
+    tenantId: tid,
     source: 'otherfinancial',
     transactionDate: { $gte: since },
   }).lean();
@@ -343,9 +353,10 @@ async function syncAdSpendFromFinance(since: Date): Promise<number> {
     const amount = Number(row.debt) || 0;
     if (amount <= 0) continue;
     await AdSpendEntry.findOneAndUpdate(
-      { trendyolId },
+      { tenantId: tid, trendyolId },
       {
         $set: {
+          tenantId: tid,
           trendyolId,
           spendDate: row.transactionDate,
           amount,
@@ -364,6 +375,7 @@ async function syncAdSpendFromFinance(since: Date): Promise<number> {
 
 export async function syncTrendyolFinance(opts?: {
   daysBack?: number;
+  tenantId?: string;
 }): Promise<{
   upserted: number;
   ordersUpdated: number;
@@ -374,7 +386,8 @@ export async function syncTrendyolFinance(opts?: {
   to: string;
 }> {
   await connectToDatabase();
-  const settings = await getTrendyolSettings();
+  const tenantId = normalizeTenantId(opts?.tenantId ?? DEFAULT_TENANT_ID);
+  const settings = await getTrendyolSettings(tenantId);
   const headers = getTrendyolAuthHeader(
     settings.apiKey,
     settings.apiSecret,
@@ -398,7 +411,8 @@ export async function syncTrendyolFinance(opts?: {
         'settlement',
         t,
         w.startMs,
-        w.endMs
+        w.endMs,
+        tenantId
       );
     }
     for (const t of OTHER_FINANCIAL_SYNC_TYPES) {
@@ -408,7 +422,8 @@ export async function syncTrendyolFinance(opts?: {
         'otherfinancial',
         t,
         w.startMs,
-        w.endMs
+        w.endMs,
+        tenantId
       );
     }
     upserted += await syncTypeWindow(
@@ -418,18 +433,20 @@ export async function syncTrendyolFinance(opts?: {
       'DeductionInvoices',
       w.startMs,
       w.endMs,
+      tenantId,
       { transactionSubType: 'PlatformServiceFee' }
     );
   }
 
-  const ordersUpdated = await applySaleFinanceToOrders(start);
-  const adSpendSynced = await syncAdSpendFromFinance(start);
+  const ordersUpdated = await applySaleFinanceToOrders(start, tenantId);
+  const adSpendSynced = await syncAdSpendFromFinance(start, tenantId);
   const cargoInvoicesEnriched = await enrichCargoInvoicesFromApi(
     start,
     settings.sellerId,
-    headers
+    headers,
+    tenantId
   );
-  const ordersFinanceUpdated = await syncOrderFinanceFields(start);
+  const ordersFinanceUpdated = await syncOrderFinanceFields(start, tenantId);
 
   return {
     upserted,

@@ -3,13 +3,16 @@ import Order from '@/models/Order';
 import StockMovement from '@/models/StockMovement';
 import Warehouse from '@/models/Warehouse';
 import WarehouseStock from '@/models/WarehouseStock';
+import { normalizeTenantId, DEFAULT_TENANT_ID } from '@/lib/tenant';
 
 export const MAIN_WAREHOUSE_ID = 'main';
 
-export async function ensureMainWarehouse() {
-  let wh = await Warehouse.findOne({ warehouseId: MAIN_WAREHOUSE_ID });
+export async function ensureMainWarehouse(tenantId?: string) {
+  const tid = normalizeTenantId(tenantId);
+  let wh = await Warehouse.findOne({ tenantId: tid, warehouseId: MAIN_WAREHOUSE_ID });
   if (!wh) {
     wh = await Warehouse.create({
+      tenantId: tid,
       warehouseId: MAIN_WAREHOUSE_ID,
       name: 'Ana Depo',
       code: 'MAIN',
@@ -19,9 +22,10 @@ export async function ensureMainWarehouse() {
   return wh;
 }
 
-export async function listWarehouses() {
-  await ensureMainWarehouse();
-  return Warehouse.find({}).sort({ isDefault: -1, name: 1 }).lean();
+export async function listWarehouses(tenantId?: string) {
+  const tid = normalizeTenantId(tenantId);
+  await ensureMainWarehouse(tid);
+  return Warehouse.find({ tenantId: tid }).sort({ isDefault: -1, name: 1 }).lean();
 }
 
 /** Ürün stok toplamlarını tüm depolardan yeniden hesapla */

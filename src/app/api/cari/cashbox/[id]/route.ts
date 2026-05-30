@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Cashbox from '@/models/Cashbox';
 import { requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 
 export async function PATCH(
   request: Request,
@@ -10,13 +11,17 @@ export async function PATCH(
   try {
     await connectToDatabase();
     const session = requireSession(request, ['admin', 'operator', 'accountant']);
-    if (session instanceof Response) return session;
+    if (session instanceof NextResponse) return session;
 
+    const { tenantId } = tenantScope(session);
     const { id } = await ctx.params;
     const data = await request.json();
     const box = await Cashbox.findById(id);
     if (!box) {
       return NextResponse.json({ success: false, error: 'Kasa bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, box.tenantId)) {
+      return NextResponse.json({ success: false, error: 'Yetkisiz.' }, { status: 403 });
     }
 
     if (data.name !== undefined) {
@@ -45,10 +50,11 @@ export async function DELETE(
   try {
     await connectToDatabase();
     const session = requireSession(request, ['admin']);
-    if (session instanceof Response) return session;
+    if (session instanceof NextResponse) return session;
 
+    const { tenantId } = tenantScope(session);
     const { id } = await ctx.params;
-    const box = await Cashbox.findById(id);
+    const box = await Cashbox.findOne({ _id: id, tenantId });
     if (!box) {
       return NextResponse.json({ success: false, error: 'Kasa bulunamadı.' }, { status: 404 });
     }
@@ -62,7 +68,7 @@ export async function DELETE(
       );
     }
 
-    await Cashbox.deleteOne({ _id: box._id });
+    await Cashbox.deleteOne({ _id: box._id, tenantId });
     return NextResponse.json({ success: true, message: 'Kasa silindi.' });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';

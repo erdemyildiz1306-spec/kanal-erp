@@ -4,12 +4,19 @@ import CariEntry from '@/models/CariEntry';
 import Cashbox from '@/models/Cashbox';
 import Customer from '@/models/Customer';
 import { getSessionFromRequest, requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 import { logActivity } from '@/lib/activity-log';
 
-async function ensureDefaultCashbox() {
-  let box = await Cashbox.findOne({ isDefault: true });
+async function ensureDefaultCashbox(tenantId: string) {
+  let box = await Cashbox.findOne({ tenantId, isDefault: true });
   if (!box) {
-    box = await Cashbox.create({ name: 'Ana Kasa', type: 'general', balance: 0, isDefault: true });
+    box = await Cashbox.create({
+      tenantId,
+      name: 'Ana Kasa',
+      type: 'general',
+      balance: 0,
+      isDefault: true,
+    });
   }
   return box;
 }
@@ -21,11 +28,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: false, error: 'Yetkisiz' }, { status: 403 });
   }
 
-  await ensureDefaultCashbox();
+  const { tenantId } = tenantScope(session);
+  await ensureDefaultCashbox(tenantId);
   const [entries, cashboxes, customers] = await Promise.all([
-    CariEntry.find({}).sort({ createdAt: -1 }).limit(500).lean(),
-    Cashbox.find({}).sort({ isDefault: -1, name: 1 }).lean(),
-    Customer.find({ active: true }).sort({ name: 1 }).lean(),
+    CariEntry.find({ tenantId }).sort({ createdAt: -1 }).limit(500).lean(),
+    Cashbox.find({ tenantId }).sort({ isDefault: -1, name: 1 }).lean(),
+    Customer.find({ tenantId, active: true }).sort({ name: 1 }).lean(),
   ]);
 
   const cashBalance = cashboxes.reduce((a, c) => a + (Number(c.balance) || 0), 0);
@@ -51,6 +59,7 @@ export async function POST(request: Request) {
     const session = requireSession(request, ['admin', 'operator', 'accountant']);
     if (session instanceof Response) return session;
 
+    const { tenantId } = tenantScope(session);
     const data = await request.json();
     const action = String(data.action ?? 'entry');
 
@@ -60,6 +69,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'Kasa adı zorunlu' }, { status: 400 });
       }
       const box = await Cashbox.create({
+        tenantId,
         name,
         type: data.type === 'bank' ? 'bank' : data.type === 'pos' ? 'pos' : 'general',
         balance: 0,
@@ -74,12 +84,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'Müşteri ve tutar zorunlu' }, { status: 400 });
       }
       const customer = await Customer.findById(customerId);
-      if (!customer) {
+      if (!customer || !belongsToTenant(session, customer.tenantId)) {
         return NextResponse.json({ success: false, error: 'Müşteri bulunamadı' }, { status: 404 });
       }
       const box = data.cashboxId
-        ? await Cashbox.findById(data.cashboxId)
-        : await ensureDefaultCashbox();
+        ? await Cashbox.findOne({ _id: data.cashboxId, tenantId })
+        : await ensureDefaultCashbox(tenantId);
       if (!box) {
         return NextResponse.json({ success: false, error: 'Kasa bulunamadı' }, { status: 404 });
       }
@@ -90,6 +100,7 @@ export async function POST(request: Request) {
       await box.save();
 
       const entry = await CariEntry.create({
+        tenantId,
         type: 'tahsilat',
         amount,
         description: String(data.description ?? 'Cari tahsilat'),
@@ -106,6 +117,7 @@ export async function POST(request: Request) {
         detail: `${customer.name}: ₺${amount}`,
         userId: session.userId,
         userName: session.name,
+        tenantId,
       });
 
       return NextResponse.json({ success: true, entry, customerBalance: customer.balance });
@@ -117,6 +129,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Tutar zorunlu' }, { status: 400 });
     }
     const entry = await CariEntry.create({
+      tenantId,
       type,
       amount,
       description: String(data.description ?? ''),

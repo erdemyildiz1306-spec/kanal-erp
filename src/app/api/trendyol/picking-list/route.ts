@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 const MAX_ORDERS = 500;
 
@@ -11,11 +12,13 @@ export async function GET(request: Request) {
     if (session instanceof NextResponse) return session;
 
     await connectToDatabase();
+    const { tenantId } = tenantScope(session);
     const { searchParams } = new URL(request.url);
     const statusCsv = searchParams.get('status') || 'Beklemede,Hazırlanıyor';
     const statuses = statusCsv.split(',').map((s) => s.trim()).filter(Boolean);
 
     const orders = await Order.find({
+      tenantId,
       platform: 'trendyol',
       status: { $in: statuses },
     })

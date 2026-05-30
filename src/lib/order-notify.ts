@@ -27,7 +27,7 @@ export function trendyolPackageIsRecentForNotify(pkg: Record<string, unknown>): 
 export async function notifyTrendyolOrderInserted(
   orderId: string,
   pkg: Record<string, unknown>,
-  opts?: { viaWebhook?: boolean }
+  opts?: { viaWebhook?: boolean; tenantId?: string }
 ): Promise<void> {
   const viaWebhook = Boolean(opts?.viaWebhook);
   if (!viaWebhook && !trendyolPackageIsRecentForNotify(pkg)) return;
@@ -43,6 +43,7 @@ export async function notifyTrendyolOrderInserted(
   const body = orderNo ? `${buyer} — #${orderNo}` : `${buyer} — yeni paket`;
 
   await OrderEvent.create({
+    tenantId: String(opts?.tenantId ?? 'default'),
     type: 'order-created',
     orderId,
     orderNumber: orderNo,

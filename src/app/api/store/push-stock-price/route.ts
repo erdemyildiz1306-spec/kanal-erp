@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import { formatStorePushError } from '@/lib/store-push-error';
 import { readStorePushSettings, resolveStorePushEndpoint } from '@/lib/store-endpoint';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 
 /**
  * Mağaza web API’sine seçili ürünlerin site fiyatı + stok.
@@ -14,9 +17,18 @@ import { readStorePushSettings, resolveStorePushEndpoint } from '@/lib/store-end
  */
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof Response) return session;
+
+    const { tenantId } = tenantScope(session);
     await connectToDatabase();
 
-    const doc = await resolveSingletonSettingDocument();
+    const mod = await assertIntegrationModuleEnabled('webStoreApi', tenantId);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
+
+    const doc = await resolveSettingDocument(tenantId);
     const storeSettings = readStorePushSettings(doc);
     const token = String(doc.get('webApiToken') ?? '').trim();
 
@@ -43,7 +55,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const products = await Product.find({ _id: { $in: ids } }).exec();
+    const products = await Product.find({ tenantId, _id: { $in: ids } }).exec();
     if (products.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Seçilen ürünler bulunamadı.' },

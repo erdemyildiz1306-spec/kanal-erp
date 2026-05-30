@@ -10,6 +10,7 @@ import {
   validateAuthPassword,
 } from '@/lib/auth-password';
 import { createSessionToken, sessionCookieOptions } from '@/lib/auth';
+import { provisionNewTenantWithTrial } from '@/lib/tenant-license';
 
 export async function POST(request: Request) {
   try {
@@ -62,12 +63,16 @@ export async function POST(request: Request) {
     const passwordHash = await bcrypt.hash(password, 10);
     const active = isFirstUser ? true : !policy.requireApproval;
 
+    const orgName = name || email.split('@')[0] || 'Kuruluş';
+    const tenant = await provisionNewTenantWithTrial(orgName);
+
     const user = await User.create({
       email,
       name,
       passwordHash,
-      role: isFirstUser ? 'admin' : 'operator',
+      role: 'admin',
       active,
+      tenantId: tenant.tenantId,
       signupSource: isFirstUser ? 'admin' : 'signup',
     });
 
@@ -77,13 +82,18 @@ export async function POST(request: Request) {
         email: user.email,
         name: user.name,
         role: user.role,
+        tenantId: tenant.tenantId,
       });
       const res = NextResponse.json({
         success: true,
         message: isFirstUser
-          ? 'İlk yönetici hesabı oluşturuldu. Oturum açıldı.'
-          : 'Kayıt tamamlandı. Giriş yapabilirsiniz.',
-        pendingApproval: false,
+          ? 'İlk yönetici hesabı oluşturuldu. 14 günlük deneme süreniz başladı.'
+          : active
+            ? 'Kayıt tamamlandı. 14 günlük deneme süreniz başladı.'
+            : 'Kayıt alındı. Onay sonrası 14 günlük deneme başlayacak.',
+        pendingApproval: !active,
+        trialDays: 14,
+        tenantId: tenant.tenantId,
         user: { email: user.email, name: user.name, role: user.role },
         bootstrap: isFirstUser,
       });

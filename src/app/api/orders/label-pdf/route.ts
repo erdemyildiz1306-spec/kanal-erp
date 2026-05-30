@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
 import Order from "@/models/Order";
-import { resolveSingletonSettingDocument } from "@/lib/erp-settings";
+import { resolveSettingDocument } from "@/lib/erp-settings";
 import { requireSession } from "@/lib/auth";
+import { belongsToTenant, tenantScope } from "@/lib/tenant";
 import { buildPackageLabelPdf } from "@/lib/package-label-pdf";
 
 export const runtime = "nodejs";
@@ -24,8 +25,11 @@ export async function GET(request: Request) {
     if (!order) {
       return NextResponse.json({ success: false, error: "Siparis bulunamadi." }, { status: 404 });
     }
+    if (!belongsToTenant(auth, order.tenantId)) {
+      return NextResponse.json({ success: false, error: "Yetkisiz." }, { status: 403 });
+    }
 
-    const settingsDoc = await resolveSingletonSettingDocument();
+    const settingsDoc = await resolveSettingDocument(tenantScope(auth).tenantId);
     const pdfBytes = await buildPackageLabelPdf(
       order as Parameters<typeof buildPackageLabelPdf>[0],
       {

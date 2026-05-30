@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useModuleSettings } from "@/components/providers/ModuleSettingsProvider";
 
 /** ERP açıkken Trendyol siparişlerini periyodik çeker; stok etiket/işleme alındığında düşer. */
-const SYNC_INTERVAL_MS = 90_000;
-
 export default function OrderAutoSync() {
   const busy = useRef(false);
+  const { integrationModules, trendyolAutoSyncIntervalMinutes, ready } = useModuleSettings();
+  const intervalMs = Math.max(60_000, (trendyolAutoSyncIntervalMinutes || 2) * 60_000);
 
   useEffect(() => {
+    if (!ready || integrationModules.trendyolSeller === false) return;
+
     const run = async () => {
       if (busy.current || document.hidden) return;
       busy.current = true;
@@ -34,7 +37,7 @@ export default function OrderAutoSync() {
     };
 
     void run();
-    const timer = window.setInterval(run, SYNC_INTERVAL_MS);
+    const timer = window.setInterval(run, intervalMs);
     const onVisible = () => {
       if (!document.hidden) void run();
     };
@@ -43,7 +46,7 @@ export default function OrderAutoSync() {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [ready, integrationModules.trendyolSeller, intervalMs]);
 
   return null;
 }

@@ -20,7 +20,9 @@ import {
   type TyAttributeSelection,
   type TyAttributeFormValue,
 } from '@/lib/trendyol-attributes';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
+import { requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 import {
   getEffectivePublicAppUrl,
   resolveTrendyolImageUrls,
@@ -109,6 +111,10 @@ function validateItemAttributes(
 /** ERP ürününü Trendyol v2 create API ile mağazaya gönderir */
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof NextResponse) return session;
+    const { tenantId } = tenantScope(session);
+
     await connectToDatabase();
     const body = (await request.json()) as {
       productId?: string;
@@ -122,6 +128,9 @@ export async function POST(request: Request) {
     const product = await Product.findById(productId);
     if (!product) {
       return NextResponse.json({ success: false, error: 'Ürün bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, product.tenantId)) {
+      return NextResponse.json({ success: false, error: 'Yetkisiz.' }, { status: 403 });
     }
 
     const categoryId = Number(product.trendyolCategoryId);
@@ -177,9 +186,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const settings = await getTrendyolSettings();
+    const settings = await getTrendyolSettings(tenantId);
     const brandId = await resolveTrendyolBrandId(settings);
-    const settingsDoc = await resolveSingletonSettingDocument();
+    const settingsDoc = await resolveSettingDocument(tenantId);
     const publicAppUrl = getEffectivePublicAppUrl(
       String(settingsDoc.get('publicAppUrl') ?? '')
     );

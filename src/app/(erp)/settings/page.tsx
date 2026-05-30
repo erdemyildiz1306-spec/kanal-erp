@@ -5,6 +5,7 @@ import {
   Save,
   Store,
   Link as LinkIcon,
+  Globe,
   Printer,
   User,
   Key,
@@ -33,6 +34,17 @@ import {
   type ModuleKey,
   type ModulesEnabled,
 } from "@/lib/module-settings";
+import {
+  DEFAULT_INTEGRATION_MODULES,
+  INTEGRATION_MODULE_LABELS,
+  normalizeIntegrationModules,
+  type IntegrationModuleKey,
+  type IntegrationModulesEnabled,
+} from "@/lib/integration-modules";
+import IntegrationModuleToggle from "@/components/settings/IntegrationModuleToggle";
+import DeploymentHealthPanel from "@/components/settings/DeploymentHealthPanel";
+import TenantsPanel from "@/components/settings/TenantsPanel";
+import LicensePaymentPanel from "@/components/settings/LicensePaymentPanel";
 
 type SettingsPayload = {
   trendyolSellerId?: string;
@@ -52,8 +64,11 @@ type SettingsPayload = {
   trendyolAutoSyncIntervalMinutes?: number;
   trendyolWebhookCoalesceOrders?: boolean;
   trendyolWebhookCoalesceSeconds?: number;
+  trendyolDefaultWarehouseId?: string;
   publicAppUrl?: string;
   webApiToken?: string;
+  wpApiUrl?: string;
+  wpApiToken?: string;
   storeName?: string;
   printPackageContents?: boolean;
   companyLegalTitle?: string;
@@ -83,6 +98,7 @@ type SettingsPayload = {
   efaturamDefaultVatRate?: number;
   efaturamAutoMarkInvoiced?: boolean;
   modulesEnabled?: ModulesEnabled;
+  integrationModulesEnabled?: IntegrationModulesEnabled;
 };
 
 type IntegrationHints = {
@@ -110,6 +126,8 @@ function emptyIntegrationDefaults(): SettingsPayload {
     webApiInvoicePushUrl: "",
     storeAutoMarkInvoiced: true,
     webApiToken: "",
+    wpApiUrl: "",
+    wpApiToken: "",
     trendyolBrandId: "",
     trendyolBrandName: "",
     trendyolStockDeductAt: "processing",
@@ -119,6 +137,7 @@ function emptyIntegrationDefaults(): SettingsPayload {
     trendyolWebhookCoalesceOrders: true,
     trendyolWebhookCoalesceSeconds: 180,
     publicAppUrl: "",
+    trendyolDefaultWarehouseId: "main",
     storeName: "",
     printPackageContents: true,
     companyLegalTitle: "",
@@ -306,6 +325,16 @@ export default function SettingsPage() {
   const [modulesEnabled, setModulesEnabled] = useState<ModulesEnabled>(
     DEFAULT_MODULES_ENABLED
   );
+  const [integrationModules, setIntegrationModules] = useState<IntegrationModulesEnabled>(
+    DEFAULT_INTEGRATION_MODULES
+  );
+
+  const setIntegrationModule = (key: IntegrationModuleKey, enabled: boolean) => {
+    setIntegrationModules((prev) => ({ ...prev, [key]: enabled }));
+    if (key === "trendyolEfaturam") {
+      setIntegration((prev) => ({ ...prev, efaturamEnabled: enabled }));
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -365,6 +394,10 @@ export default function SettingsPage() {
           (s.webApiInvoicePushUrl as string) || cached.webApiInvoicePushUrl || "",
         storeAutoMarkInvoiced: s.storeAutoMarkInvoiced !== false,
         webApiToken: "",
+        wpApiUrl:
+          (s.wpApiUrl as string) ||
+          String((data.saved as { wpApiUrl?: string } | undefined)?.wpApiUrl ?? ""),
+        wpApiToken: "",
         storeName: (s.storeName as string) || cached.storeName || "",
         printPackageContents: Boolean(
           s.printPackageContents ?? cached.printPackageContents ?? true
@@ -424,10 +457,16 @@ export default function SettingsPage() {
         efaturamInvoiceLinkTemplate: String(s.efaturamInvoiceLinkTemplate ?? ""),
         efaturamDefaultVatRate: Number(s.efaturamDefaultVatRate) || 20,
         efaturamAutoMarkInvoiced: s.efaturamAutoMarkInvoiced !== false,
+        trendyolDefaultWarehouseId: String(s.trendyolDefaultWarehouseId ?? "main"),
       };
       setIntegration(next);
       setFinanceForm(financeSettingsFromApi(s));
       setModulesEnabled(normalizeModulesEnabled(s.modulesEnabled));
+      const normalizedIntegration = normalizeIntegrationModules(s.integrationModulesEnabled);
+      if (!s.integrationModulesEnabled && s.efaturamEnabled) {
+        normalizedIntegration.trendyolEfaturam = Boolean(s.efaturamEnabled);
+      }
+      setIntegrationModules(normalizedIntegration);
       persistPublicSettings(next);
       const ih = data.integrationHints as IntegrationHints | undefined;
       if (ih) setHints(ih);
@@ -517,6 +556,9 @@ export default function SettingsPage() {
         payload.trendyolApiSecret = integration.trendyolApiSecret.trim();
       if (integration.webApiToken?.trim())
         payload.webApiToken = integration.webApiToken.trim();
+      if (integration.wpApiUrl !== undefined) payload.wpApiUrl = integration.wpApiUrl;
+      if (integration.wpApiToken?.trim())
+        payload.wpApiToken = integration.wpApiToken.trim();
       if (integration.trendyolStockDeductAt?.trim())
         payload.trendyolStockDeductAt = integration.trendyolStockDeductAt.trim();
       if (integration.trendyolWebhookSecret?.trim())
@@ -532,7 +574,6 @@ export default function SettingsPage() {
       }
       if (integration.publicAppUrl?.trim())
         payload.publicAppUrl = integration.publicAppUrl.trim();
-      payload.efaturamEnabled = integration.efaturamEnabled === true;
       payload.efaturamUseStage = integration.efaturamUseStage === true;
       if (integration.efaturamPartnerId?.trim())
         payload.efaturamPartnerId = integration.efaturamPartnerId.trim();
@@ -557,6 +598,14 @@ export default function SettingsPage() {
       if (integration.efaturamDefaultVatRate != null)
         payload.efaturamDefaultVatRate = integration.efaturamDefaultVatRate;
       payload.efaturamAutoMarkInvoiced = integration.efaturamAutoMarkInvoiced !== false;
+      payload.integrationModulesEnabled = integrationModules;
+      payload.trendyolDefaultWarehouseId =
+        String(integration.trendyolDefaultWarehouseId ?? "main").trim() || "main";
+      if (integrationModules.trendyolEfaturam) {
+        payload.efaturamEnabled = integration.efaturamEnabled === true;
+      } else {
+        payload.efaturamEnabled = false;
+      }
 
       Object.assign(payload, financeSettingsToPayload(financeForm));
       payload.modulesEnabled = modulesEnabled;
@@ -663,6 +712,7 @@ export default function SettingsPage() {
     { id: "trendyol-fatura", name: "Trendyol E-Faturam", shortName: "E-Faturam", subtitle: "e-Arşiv ve fatura", icon: FileText, color: "text-violet-600 bg-violet-50" },
     { id: "finans", name: "Finans & Kargo", shortName: "Finans", subtitle: "Simülatör ve desi", icon: TrendingUp, color: "text-emerald-600 bg-emerald-50" },
     { id: "web", name: "Next.js Mağaza API", shortName: "Mağaza API", subtitle: "Web entegrasyonu", icon: LinkIcon, color: "text-indigo-600 bg-indigo-50" },
+    { id: "wordpress", name: "WordPress WooCommerce", shortName: "WordPress", subtitle: "WooCommerce REST", icon: Globe, color: "text-sky-600 bg-sky-50" },
     { id: "print", name: "Etiket & Çıktı", shortName: "Etiket", subtitle: "Yazdırma", icon: Printer, color: "text-purple-600 bg-purple-50" },
     { id: "modules", name: "Modüller", shortName: "Modüller", subtitle: "Menü aç/kapat", icon: LayoutGrid, color: "text-teal-600 bg-teal-50" },
   ];
@@ -701,6 +751,9 @@ export default function SettingsPage() {
     <>
           {activeTab === "general" && (
             <div className="space-y-6">
+              <DeploymentHealthPanel />
+              <TenantsPanel />
+              <LicensePaymentPanel />
               <div className="border-b border-slate-100 pb-4">
                 <h3 className="text-lg font-bold text-slate-900">Genel &amp; Firma (fatura için)</h3>
                 <p className="text-sm text-slate-500">
@@ -851,6 +904,16 @@ export default function SettingsPage() {
 
           {activeTab === "trendyol" && (
             <div className="space-y-5">
+              <IntegrationModuleToggle
+                title={INTEGRATION_MODULE_LABELS.trendyolSeller}
+                description="Kapalıyken Trendyol sipariş/ürün senkronu, webhook ve stok gönderimi devre dışı kalır."
+                enabled={integrationModules.trendyolSeller !== false}
+                onChange={(enabled) => setIntegrationModule("trendyolSeller", enabled)}
+              />
+
+              <div
+                className={`space-y-5 ${integrationModules.trendyolSeller === false ? "opacity-50 pointer-events-none select-none" : ""}`}
+              >
               <div>
                 <h3 className="text-lg font-bold text-slate-900">Trendyol Satıcı API</h3>
                 <p className="text-sm text-slate-500 mt-1">
@@ -1046,6 +1109,23 @@ export default function SettingsPage() {
                 <h4 className="font-semibold text-slate-900 text-sm">Sipariş &amp; stok</h4>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Varsayılan depo (Trendyol siparişleri)
+                </label>
+                <input
+                  type="text"
+                  value={integration.trendyolDefaultWarehouseId ?? "main"}
+                  onChange={(e) =>
+                    setIntegration({ ...integration, trendyolDefaultWarehouseId: e.target.value })
+                  }
+                  placeholder="main"
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
+                />
+                <p className="text-xs text-slate-500">
+                  Depo kodu (varsayılan: main). Yeni Trendyol siparişleri bu depoya bağlanır.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                   Stok düşüm eşiği (Trendyol sync)
                 </label>
                 <select
@@ -1223,11 +1303,21 @@ export default function SettingsPage() {
                 ) : null}
               </div>
               </div>
+              </div>
             </div>
           )}
 
           {activeTab === "trendyol-fatura" && (
             <div className="space-y-5">
+              <IntegrationModuleToggle
+                title={INTEGRATION_MODULE_LABELS.trendyolEfaturam}
+                description="Kapalıyken e-Arşiv / e-Fatura kesimi ve Trendyol fatura iletimi yapılmaz."
+                enabled={integrationModules.trendyolEfaturam !== false}
+                onChange={(enabled) => setIntegrationModule("trendyolEfaturam", enabled)}
+              />
+              <div
+                className={`space-y-5 ${integrationModules.trendyolEfaturam === false ? "opacity-50 pointer-events-none select-none" : ""}`}
+              >
               <div>
                 <h3 className="text-lg font-bold text-slate-900">Trendyol E-Faturam</h3>
                 <p className="text-sm text-slate-500 mt-1">
@@ -1242,11 +1332,21 @@ export default function SettingsPage() {
                 onTestConnection={() => void testEfaturamConnection()}
                 testing={efaturamTesting}
               />
+              </div>
             </div>
           )}
 
           {activeTab === "web" && (
             <div className="space-y-6">
+              <IntegrationModuleToggle
+                title={INTEGRATION_MODULE_LABELS.webStoreApi}
+                description="Kapalıyken mağaza sipariş çekme, stok/fiyat gönderme ve fatura bildirimi devre dışı kalır."
+                enabled={integrationModules.webStoreApi !== false}
+                onChange={(enabled) => setIntegrationModule("webStoreApi", enabled)}
+              />
+              <div
+                className={`space-y-6 ${integrationModules.webStoreApi === false ? "opacity-50 pointer-events-none select-none" : ""}`}
+              >
               <div className="border-b border-slate-100 pb-4">
                 <h3 className="text-lg font-bold text-slate-900">Next.js Mağaza API</h3>
                 <p className="text-sm text-slate-500">
@@ -1358,6 +1458,56 @@ export default function SettingsPage() {
                   </div>
                 </label>
               </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "wordpress" && (
+            <div className="space-y-6">
+              <IntegrationModuleToggle
+                title={INTEGRATION_MODULE_LABELS.wordpress}
+                description="Kapalıyken WooCommerce stok/fiyat senkronu devre dışı kalır."
+                enabled={integrationModules.wordpress !== false}
+                onChange={(enabled) => setIntegrationModule("wordpress", enabled)}
+              />
+              <div
+                className={`space-y-6 ${integrationModules.wordpress === false ? "opacity-50 pointer-events-none select-none" : ""}`}
+              >
+                <div className="border-b border-slate-100 pb-4">
+                  <h3 className="text-lg font-bold text-slate-900">WordPress WooCommerce</h3>
+                  <p className="text-sm text-slate-500">
+                    WooCommerce REST API — site URL ve erişim token (Consumer key/secret veya uygulama şifresi).
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Site URL
+                  </label>
+                  <input
+                    type="text"
+                    value={integration.wpApiUrl ?? ""}
+                    onChange={(e) => setIntegration({ ...integration, wpApiUrl: e.target.value })}
+                    placeholder="https://magaza.example.com"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    API token
+                  </label>
+                  <input
+                    type="password"
+                    value={integration.wpApiToken ?? ""}
+                    onChange={(e) => setIntegration({ ...integration, wpApiToken: e.target.value })}
+                    placeholder="Kayıtlıysa güncellenmez; yeni değer girin"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+                <p className="text-xs text-slate-500">
+                  Ürünlerde platform olarak &quot;wordpress&quot; işaretlenmiş SKU&apos;lar stok hub üzerinden WooCommerce&apos;e
+                  gönderilir.
+                </p>
+              </div>
             </div>
           )}
 
@@ -1403,35 +1553,65 @@ export default function SettingsPage() {
           )}
 
           {activeTab === "modules" && (
-            <div className="space-y-6">
-              <div className="border-b border-slate-100 pb-4">
-                <h3 className="text-lg font-bold text-slate-900">Modül görünürlüğü</h3>
-                <p className="text-sm text-slate-500">
-                  Kapatılan modüller sol menü, alt menü ve mobil «Menü» listesinden gizlenir. Ayarlar her zaman görünür kalır.
-                </p>
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <div className="border-b border-slate-100 pb-4">
+                  <h3 className="text-lg font-bold text-slate-900">Menü modülleri</h3>
+                  <p className="text-sm text-slate-500">
+                    Kapatılan modüller sol menü, alt menü ve mobil «Menü» listesinden gizlenir. Ayarlar her zaman görünür kalır.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(Object.keys(MODULE_LABELS) as ModuleKey[]).map((key) => (
+                    <label
+                      key={key}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 cursor-pointer hover:bg-slate-50"
+                    >
+                      <span className="text-sm font-semibold text-slate-800">
+                        {MODULE_LABELS[key]}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={modulesEnabled[key] !== false}
+                        onChange={(e) =>
+                          setModulesEnabled((prev) => ({
+                            ...prev,
+                            [key]: e.target.checked,
+                          }))
+                        }
+                        className="w-5 h-5 text-teal-600 border-slate-300 rounded focus:ring-teal-500"
+                      />
+                    </label>
+                  ))}
+                </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {(Object.keys(MODULE_LABELS) as ModuleKey[]).map((key) => (
-                  <label
-                    key={key}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 cursor-pointer hover:bg-slate-50"
-                  >
-                    <span className="text-sm font-semibold text-slate-800">
-                      {MODULE_LABELS[key]}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={modulesEnabled[key] !== false}
-                      onChange={(e) =>
-                        setModulesEnabled((prev) => ({
-                          ...prev,
-                          [key]: e.target.checked,
-                        }))
+
+              <div className="space-y-4 border-t border-slate-100 pt-6">
+                <div className="border-b border-slate-100 pb-4">
+                  <h3 className="text-lg font-bold text-slate-900">Entegrasyon modülleri</h3>
+                  <p className="text-sm text-slate-500">
+                    Kapalı entegrasyonlar ilgili API, senkron ve ayar sekmelerinde devre dışı kalır. Lisans kapsamını root panel belirler.
+                  </p>
+                </div>
+                <div className="grid gap-3">
+                  {(Object.keys(INTEGRATION_MODULE_LABELS) as IntegrationModuleKey[]).map((key) => (
+                    <IntegrationModuleToggle
+                      key={key}
+                      title={INTEGRATION_MODULE_LABELS[key]}
+                      description={
+                        key === "trendyolSeller"
+                          ? "Trendyol sipariş, ürün ve stok senkronu."
+                          : key === "webStoreApi"
+                            ? "Next.js mağaza API entegrasyonu."
+                            : key === "trendyolEfaturam"
+                              ? "Trendyol e-Arşiv / e-Fatura."
+                              : "WordPress WooCommerce stok senkronu."
                       }
-                      className="w-5 h-5 text-teal-600 border-slate-300 rounded focus:ring-teal-500"
+                      enabled={integrationModules[key] !== false}
+                      onChange={(enabled) => setIntegrationModule(key, enabled)}
                     />
-                  </label>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}

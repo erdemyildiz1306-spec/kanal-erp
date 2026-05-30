@@ -8,6 +8,8 @@ import {
   requireInvoiceSession,
   storeInvoiceErrorResponse,
 } from '@/lib/store-invoice-api';
+import connectToDatabase from '@/lib/mongodb';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +19,12 @@ export async function POST(request: Request) {
     if (session instanceof NextResponse) return session;
     const limited = enforceInvoiceRateLimit(session.userId);
     if (limited) return limited;
+
+    await connectToDatabase();
+    const mod = await assertIntegrationModuleEnabled('trendyolEfaturam');
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
 
     const body = (await request.json()) as {
       orderId?: string;

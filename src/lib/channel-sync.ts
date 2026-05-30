@@ -1,13 +1,15 @@
 import Product from '@/models/Product';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import { readStorePushSettings, resolveStorePushEndpoint } from '@/lib/store-endpoint';
-import {
-  getTrendyolSettings,
-  updateTrendyolStockAndPrice,
-} from '@/lib/trendyol';
+import { loadIntegrationModulesEnabled } from '@/lib/integration-modules-server';
+import { isIntegrationModuleEnabled } from '@/lib/integration-modules';
+import { getTrendyolSettings, updateTrendyolStockAndPrice } from '@/lib/trendyol';
+import { readProductTenantId } from '@/lib/tenant-query';
+import { pushStockToWordPress } from '@/lib/wordpress-connector';
 
 type ProductDoc = {
   _id: unknown;
+  tenantId?: string;
   sku: string;
   name: string;
   barcode?: string;
@@ -18,28 +20,38 @@ type ProductDoc = {
   platforms?: string[];
   prices?: { website?: number; trendyol?: number };
   integrations?: {
-    trendyol?: { syncActive?: boolean };
+    trendyol?: { syncActive?: boolean; listingActive?: boolean };
     web?: { syncActive?: boolean };
+    wordpress?: { syncActive?: boolean };
   };
 };
 
 export async function pushProductStockToChannels(
   productId: unknown,
-  opts?: { skipTrendyol?: boolean; skipWeb?: boolean }
-): Promise<{ trendyol?: string; web?: string }> {
+  opts?: {
+    skipTrendyol?: boolean;
+    skipWeb?: boolean;
+    skipWordpress?: boolean;
+    tenantId?: string;
+  }
+): Promise<{ trendyol?: string; web?: string; wordpress?: string }> {
   const product = (await Product.findById(productId).exec()) as ProductDoc | null;
   if (!product) return {};
 
-  const result: { trendyol?: string; web?: string } = {};
+  const tenantId = opts?.tenantId ?? readProductTenantId(product);
+  const result: { trendyol?: string; web?: string; wordpress?: string } = {};
   const platforms = product.platforms ?? [];
+  const modules = await loadIntegrationModulesEnabled(tenantId);
 
   if (
     !opts?.skipTrendyol &&
+    isIntegrationModuleEnabled(modules, 'trendyolSeller') &&
     platforms.includes('trendyol') &&
+    product.integrations?.trendyol?.listingActive !== false &&
     product.integrations?.trendyol?.syncActive !== false
   ) {
     try {
-      const settings = await getTrendyolSettings();
+      const settings = await getTrendyolSettings(tenantId);
       const listPrice = Math.max(0, Number(product.price) || 0);
       const tySale = Math.max(0, Number(product.prices?.trendyol) || listPrice);
       const items: Array<{
@@ -79,18 +91,18 @@ export async function pushProductStockToChannels(
         result.trendyol = `${items.length} barkod güncellendi`;
       }
     } catch (e: unknown) {
-      result.trendyol =
-        e instanceof Error ? e.message : 'Trendyol gönderim hatası';
+      result.trendyol = e instanceof Error ? e.message : 'Trendyol gönderim hatası';
     }
   }
 
   if (
     !opts?.skipWeb &&
+    isIntegrationModuleEnabled(modules, 'webStoreApi') &&
     platforms.includes('web') &&
     product.integrations?.web?.syncActive !== false
   ) {
     try {
-      const doc = await resolveSingletonSettingDocument();
+      const doc = await resolveSettingDocument(tenantId);
       const storeSettings = readStorePushSettings(doc);
       const token = String(doc.get('webApiToken') ?? '').trim();
       const endpoint = resolveStorePushEndpoint(storeSettings);
@@ -154,6 +166,47 @@ export async function pushProductStockToChannels(
     }
   }
 
+  if (
+    !opts?.skipWordpress &&
+    isIntegrationModuleEnabled(modules, 'wordpress') &&
+    platforms.includes('wordpress') &&
+    product.integrations?.wordpress?.syncActive !== false
+  ) {
+    try {
+      const listPrice = Math.max(0, Number(product.price) || 0);
+      const salePrice = Math.max(0, Number(product.prices?.website) || listPrice);
+      const items: Array<{ sku: string; stock: number; salePrice: number; listPrice: number }> =
+        [];
+
+      if (product.hasVariants && product.variants?.length) {
+        for (const v of product.variants) {
+          const sku = String(v.sku ?? '').trim();
+          if (!sku) continue;
+          items.push({
+            sku,
+            stock: Math.max(0, Math.floor(Number(v.stock) || 0)),
+            salePrice,
+            listPrice,
+          });
+        }
+      } else if (product.sku) {
+        items.push({
+          sku: String(product.sku),
+          stock: Math.max(0, Math.floor(Number(product.stock) || 0)),
+          salePrice,
+          listPrice,
+        });
+      }
+
+      if (items.length) {
+        const wp = await pushStockToWordPress(tenantId, items);
+        result.wordpress = wp.ok ? wp.message : wp.message;
+      }
+    } catch (e: unknown) {
+      result.wordpress = e instanceof Error ? e.message : 'WordPress gönderim hatası';
+    }
+  }
+
   return result;
 }
 
@@ -161,9 +214,12 @@ export async function pushStockAfterOrder(
   product: ProductDoc,
   sourcePlatform: string
 ): Promise<void> {
+  const tenantId = readProductTenantId(product);
   await pushProductStockToChannels(product._id, {
     skipTrendyol: sourcePlatform === 'trendyol',
     skipWeb: sourcePlatform === 'web',
+    skipWordpress: sourcePlatform === 'wordpress',
+    tenantId,
   });
 }
 

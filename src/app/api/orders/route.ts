@@ -7,7 +7,8 @@ import {
   orderHasStockDeductions,
 } from '@/lib/inventory';
 import { pushStockAfterOrder } from '@/lib/channel-sync';
-import { getSessionFromRequest } from '@/lib/auth';
+import { getSessionFromRequest, requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 import {
   applyOrderStockDeduction,
   notifyTrendyolOrderPicking,
@@ -24,7 +25,8 @@ export async function GET(request: Request) {
     const platform = searchParams.get('platform');
     const status = searchParams.get('status');
 
-    const query: Record<string, string> = {};
+    const session = getSessionFromRequest(request);
+    const query: Record<string, string> = { ...tenantScope(session) };
     if (platform && platform !== 'Tümü') query.platform = platform.toLowerCase();
     if (status && status !== 'Tümü') query.status = status;
 
@@ -53,7 +55,11 @@ export async function POST(request: Request) {
     const processedItems = [];
 
     for (const item of data.items || []) {
-      const match = await findProductBySkuOrBarcode(item.sku, item.barcode);
+      const match = await findProductBySkuOrBarcode(
+        item.sku,
+        item.barcode,
+        tenantScope(session).tenantId
+      );
       const product = match?.product;
       const itemCost = product ? (Number(product.costPrice) || 0) : 0;
       const itemPrice = Number(item.unitPrice) || 0;
@@ -78,6 +84,7 @@ export async function POST(request: Request) {
     const platform = String(data.platform || 'retail').toLowerCase();
 
     const newOrder = new Order({
+      tenantId: tenantScope(session).tenantId,
       orderNumber,
       platform,
       status: data.status || 'Yeni',
@@ -107,6 +114,7 @@ export async function POST(request: Request) {
         reference: orderNumber,
         userId: session?.userId,
         userName: session?.name,
+        tenantId: tenantScope(session).tenantId,
       });
       if (updated && !touched.has(String(updated._id))) {
         touched.add(String(updated._id));
@@ -144,6 +152,9 @@ export async function PUT(request: Request) {
 
     if (!order) {
       return NextResponse.json({ error: 'Sipariş bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, order.tenantId)) {
+      return NextResponse.json({ error: 'Bu siparişe erişim yetkiniz yok.' }, { status: 403 });
     }
 
     const prevStatus = order.status;

@@ -12,6 +12,7 @@ import {
   storeInvoiceErrorResponse,
 } from '@/lib/store-invoice-api';
 import { StoreInvoiceError } from '@/lib/store-invoice-errors';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,12 @@ export async function POST(request: Request) {
     if (session instanceof NextResponse) return session;
     const limited = enforceInvoiceRateLimit(session.userId);
     if (limited) return limited;
+
+    await connectToDatabase();
+    const mod = await assertIntegrationModuleEnabled('webStoreApi');
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
 
     const form = await request.formData();
     const orderId = assertValidStoreOrderId(String(form.get('orderId') ?? ''));

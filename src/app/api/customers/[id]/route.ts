@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import connectToDatabase from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { requireSession } from '@/lib/auth';
+import { belongsToTenant } from '@/lib/tenant';
 
 export async function PATCH(
   request: Request,
@@ -18,6 +19,9 @@ export async function PATCH(
     const customer = await Customer.findById(id);
     if (!customer) {
       return NextResponse.json({ success: false, error: 'Müşteri bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, customer.tenantId)) {
+      return NextResponse.json({ success: false, error: 'Yetkisiz.' }, { status: 403 });
     }
 
     if (data.name !== undefined) customer.name = String(data.name ?? '').trim();
@@ -35,7 +39,11 @@ export async function PATCH(
       if (!email) {
         return NextResponse.json({ success: false, error: 'E-posta boş olamaz.' }, { status: 400 });
       }
-      const dup = await Customer.findOne({ email, _id: { $ne: customer._id } });
+      const dup = await Customer.findOne({
+        email,
+        tenantId: customer.tenantId,
+        _id: { $ne: customer._id },
+      });
       if (dup) {
         return NextResponse.json({ success: false, error: 'Bu e-posta kullanımda.' }, { status: 409 });
       }
@@ -71,6 +79,9 @@ export async function DELETE(
     const customer = await Customer.findById(id);
     if (!customer) {
       return NextResponse.json({ success: false, error: 'Müşteri bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, customer.tenantId)) {
+      return NextResponse.json({ success: false, error: 'Yetkisiz.' }, { status: 403 });
     }
 
     customer.active = false;

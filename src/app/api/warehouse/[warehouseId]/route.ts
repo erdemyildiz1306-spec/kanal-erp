@@ -4,6 +4,8 @@ import Warehouse from '@/models/Warehouse';
 import WarehouseStock from '@/models/WarehouseStock';
 import Product from '@/models/Product';
 import { requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 import { MAIN_WAREHOUSE_ID } from '@/lib/warehouse-stock';
 
 export async function GET(
@@ -12,18 +14,22 @@ export async function GET(
 ) {
   try {
     await connectToDatabase();
+    const session = requireSession(request);
+    if (session instanceof NextResponse) return session;
+    const { tenantId } = tenantScope(session);
+
     const { warehouseId } = await ctx.params;
     const { searchParams } = new URL(request.url);
     const q = String(searchParams.get('q') ?? '').trim().toLowerCase();
 
-    const wh = await Warehouse.findOne({ warehouseId }).lean();
+    const wh = await Warehouse.findOne(mergeTenant(tenantId, { warehouseId })).lean();
     if (!wh) {
       return NextResponse.json({ success: false, error: 'Depo bulunamadı.' }, { status: 404 });
     }
 
     const rows = await WarehouseStock.find({ warehouseId }).lean();
     const productIds = [...new Set(rows.map((r) => String(r.productId)))];
-    const products = await Product.find({ _id: { $in: productIds } })
+    const products = await Product.find({ tenantId, _id: { $in: productIds } })
       .select('name sku barcode hasVariants variants stock price')
       .lean();
     const productMap = new Map(products.map((p) => [String(p._id), p]));
@@ -82,13 +88,19 @@ export async function PATCH(
   try {
     await connectToDatabase();
     const session = requireSession(request, ['admin', 'operator']);
-    if (session instanceof Response) return session;
+    if (session instanceof NextResponse) return session;
+    const { tenantId } = tenantScope(session);
 
     const { warehouseId } = await ctx.params;
     const data = await request.json();
 
+    const existing = await Warehouse.findOne(mergeTenant(tenantId, { warehouseId }));
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Depo bulunamadı.' }, { status: 404 });
+    }
+
     const wh = await Warehouse.findOneAndUpdate(
-      { warehouseId },
+      mergeTenant(tenantId, { warehouseId }),
       {
         $set: {
           name: data.name,
@@ -117,7 +129,8 @@ export async function DELETE(
   try {
     await connectToDatabase();
     const session = requireSession(request, ['admin']);
-    if (session instanceof Response) return session;
+    if (session instanceof NextResponse) return session;
+    const { tenantId } = tenantScope(session);
 
     const { warehouseId } = await ctx.params;
     if (warehouseId === MAIN_WAREHOUSE_ID) {
@@ -127,7 +140,7 @@ export async function DELETE(
       );
     }
 
-    const wh = await Warehouse.findOne({ warehouseId });
+    const wh = await Warehouse.findOne(mergeTenant(tenantId, { warehouseId }));
     if (!wh) {
       return NextResponse.json({ success: false, error: 'Depo bulunamadı.' }, { status: 404 });
     }
@@ -141,7 +154,7 @@ export async function DELETE(
     }
 
     await WarehouseStock.deleteMany({ warehouseId });
-    await Warehouse.deleteOne({ warehouseId });
+    await Warehouse.deleteOne(mergeTenant(tenantId, { warehouseId }));
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';

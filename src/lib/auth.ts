@@ -2,17 +2,21 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { DEFAULT_TENANT_ID, normalizeTenantId } from '@/lib/tenant';
 
 export const SESSION_COOKIE = 'kanal_erp_session';
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type SessionRole = 'admin' | 'operator' | 'accountant' | 'customer';
+export type SessionRole = 'root' | 'admin' | 'operator' | 'accountant' | 'customer';
 
 export type SessionUser = {
   userId: string;
   email: string;
   name: string;
   role: SessionRole;
+  tenantId: string;
+  /** Root impersonation — orijinal root kullanıcı id */
+  impersonatorId?: string;
 };
 
 function sessionSecret(): string {
@@ -61,7 +65,11 @@ export function verifySessionToken(token: string | undefined | null): SessionUse
       userId: parsed.userId,
       email: parsed.email,
       name: parsed.name,
-      role: parsed.role,
+      role: ['admin', 'operator', 'accountant', 'root'].includes(parsed.role)
+        ? parsed.role
+        : 'operator',
+      tenantId: normalizeTenantId(parsed.tenantId),
+      ...(parsed.impersonatorId ? { impersonatorId: String(parsed.impersonatorId) } : {}),
     };
   } catch {
     return null;
@@ -136,12 +144,14 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith('/api/auth/reset-password')) return true;
   if (pathname.startsWith('/api/auth/register-config')) return true;
   if (pathname === '/api/store/stock-price') return true;
-  if (pathname.startsWith('/api/auth/dev-reset-users')) return true;
+  if (pathname === '/api/cron/trendyol-sync') return true;
+  if (pathname.startsWith('/api/cron/license-check')) return true;
   if (pathname.startsWith('/api/auth/logout')) return true;
   if (pathname.startsWith('/api/auth/me')) return true;
   if (pathname.startsWith('/api/apk/')) return true;
   if (pathname.startsWith('/api/trendyol/webhook/')) return true;
   if (pathname === '/api/orders/webhook') return true;
+  if (pathname.startsWith('/api/auth/dev-reset-users')) return true;
   if (pathname === '/api/health') return true;
   if (pathname.startsWith('/_next/')) return true;
   if (pathname.startsWith('/uploads/')) return true;

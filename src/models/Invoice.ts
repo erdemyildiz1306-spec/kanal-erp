@@ -16,7 +16,8 @@ const InvoiceLineSchema = new mongoose.Schema(
 
 const InvoiceSchema = new mongoose.Schema(
   {
-    invoiceNumber: { type: String, required: true, unique: true },
+    tenantId: { type: String, default: "default", index: true },
+    invoiceNumber: { type: String, required: true },
     /** İsteğe bağlı ERP sipariş numarası / platform referansı */
     orderRef: { type: String, default: "" },
     status: {
@@ -45,6 +46,7 @@ const InvoiceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+InvoiceSchema.index({ tenantId: 1, invoiceNumber: 1 }, { unique: true });
 InvoiceSchema.index({ createdAt: -1 });
 InvoiceSchema.index({ status: 1, createdAt: -1 });
 

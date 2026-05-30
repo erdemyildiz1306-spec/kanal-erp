@@ -1,5 +1,6 @@
 import ActivityLog from '@/models/ActivityLog';
 import connectToDatabase from '@/lib/mongodb';
+import { DEFAULT_TENANT_ID, normalizeTenantId } from '@/lib/tenant';
 
 export async function logActivity(input: {
   action: string;
@@ -8,12 +9,13 @@ export async function logActivity(input: {
   userId?: string;
   userName?: string;
   meta?: Record<string, unknown>;
+  tenantId?: string;
 }) {
   try {
     await connectToDatabase();
     await ActivityLog.create({
-      action: input.action,
-      module: input.module ?? 'system',
+      tenantId: normalizeTenantId(input.tenantId ?? DEFAULT_TENANT_ID),
+      action: input.action,      module: input.module ?? 'system',
       detail: input.detail ?? '',
       userId: input.userId ?? '',
       userName: input.userName ?? '',

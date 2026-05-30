@@ -4,6 +4,8 @@ import Customer from '@/models/Customer';
 import Order from '@/models/Order';
 import CariEntry from '@/models/CariEntry';
 import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 
 export async function GET(request: Request) {
   try {
@@ -13,21 +15,24 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Müşteri oturumu gerekli.' }, { status: 401 });
     }
 
+    const { tenantId } = tenantScope(session);
     const customer = await Customer.findById(session.userId).lean();
     if (!customer) {
       return NextResponse.json({ success: false, error: 'Müşteri bulunamadı.' }, { status: 404 });
     }
 
     const payments = await CariEntry.find({
+      tenantId,
       customerId: customer._id,
       type: 'tahsilat',
     }).lean();
     const totalPayments = payments.reduce((a, p) => a + (Number(p.amount) || 0), 0);
 
     const orders = await Order.find({
+      ...mergeTenant(tenantId, {}),
       $or: [
         { customerId: customer._id, platform: 'b2b' },
-        { customerName: customer.name },
+        { customerName: customer.name, platform: 'b2b' },
       ],
     })
       .sort({ createdAt: -1 })

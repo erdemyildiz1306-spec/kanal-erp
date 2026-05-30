@@ -4,12 +4,15 @@ import Warehouse from '@/models/Warehouse';
 import { findProductBySkuOrBarcode } from '@/lib/inventory';
 import { adjustWarehouseStock } from '@/lib/warehouse-stock';
 import { requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
+import { mergeTenant, readProductTenantId } from '@/lib/tenant-query';
 
 export async function POST(request: Request) {
   try {
     await connectToDatabase();
     const session = requireSession(request, ['admin', 'operator']);
-    if (session instanceof Response) return session;
+    if (session instanceof NextResponse) return session;
+    const { tenantId } = tenantScope(session);
 
     const body = (await request.json()) as {
       fromWarehouseId?: string;
@@ -31,16 +34,19 @@ export async function POST(request: Request) {
     }
 
     const [fromWh, toWh] = await Promise.all([
-      Warehouse.findOne({ warehouseId: fromId }),
-      Warehouse.findOne({ warehouseId: toId }),
+      Warehouse.findOne(mergeTenant(tenantId, { warehouseId: fromId })),
+      Warehouse.findOne(mergeTenant(tenantId, { warehouseId: toId })),
     ]);
     if (!fromWh || !toWh) {
       return NextResponse.json({ success: false, error: 'Depo bulunamadı.' }, { status: 404 });
     }
 
-    const match = await findProductBySkuOrBarcode(body.sku, body.barcode);
+    const match = await findProductBySkuOrBarcode(body.sku, body.barcode, tenantId);
     if (!match) {
       return NextResponse.json({ success: false, error: 'Ürün bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, readProductTenantId(match.product))) {
+      return NextResponse.json({ success: false, error: 'Yetkisiz.' }, { status: 403 });
     }
 
     const fromAfter = await adjustWarehouseStock({

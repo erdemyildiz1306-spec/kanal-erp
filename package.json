@@ -6,7 +6,8 @@
     "dev": "next dev -p 3005 --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "stress:health": "node scripts/stress-order-sync.mjs"
   },
   "dependencies": {
     "@capacitor/camera": "^7.0.5",

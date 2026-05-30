@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
+import { Bell, Crown, LogOut, Moon, Search, Sun, User } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import MobileSearchSheet from "@/components/layout/MobileSearchSheet";
@@ -393,13 +393,31 @@ export default function Header() {
             )}
           </div>
 
+          {me?.role === "root" ? (
+            <button
+              type="button"
+              onClick={() => router.push("/root")}
+              title="Root panel"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 text-xs font-semibold hover:bg-amber-100"
+            >
+              <Crown size={16} />
+              Root Panel
+            </button>
+          ) : null}
+
           <div className="hidden md:flex items-center gap-3 border-l border-[var(--erp-border)] pl-5">
             <div className="w-10 h-10 rounded-full bg-[var(--erp-accent-soft)] flex items-center justify-center text-[var(--erp-accent)]">
               <User size={20} />
             </div>
             <div>
               <p className="text-sm font-medium text-[var(--erp-text)]">{me?.name ?? "Kanal ERP"}</p>
-              <p className="text-xs erp-muted">{me?.role ?? "Panel"}</p>
+              <p className="text-xs erp-muted">
+                {me?.role === "root"
+                  ? "Platform yöneticisi"
+                  : me?.role === "admin"
+                    ? "Yönetici"
+                    : me?.role ?? "Panel"}
+              </p>
             </div>
           </div>
           <button

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const OrderEventSchema = new mongoose.Schema(
   {
+    tenantId: { type: String, required: true, default: 'default', index: true },
     type: { type: String, required: true, index: true },
     orderId: { type: String, default: '', index: true },
     orderNumber: { type: String, default: '' },
@@ -14,7 +15,7 @@ const OrderEventSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-OrderEventSchema.index({ createdAt: -1 });
+OrderEventSchema.index({ tenantId: 1, createdAt: -1 });
 
 export default mongoose.models.OrderEvent ||
   mongoose.model('OrderEvent', OrderEventSchema);

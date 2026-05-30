@@ -2,13 +2,14 @@
 
 export const SESSION_COOKIE = 'kanal_erp_session';
 
-export type SessionRole = 'admin' | 'operator' | 'accountant' | 'customer';
+export type SessionRole = 'root' | 'admin' | 'operator' | 'accountant' | 'customer';
 
 export type SessionUser = {
   userId: string;
   email: string;
   name: string;
   role: SessionRole;
+  tenantId: string;
 };
 
 import { isProductionEnv } from '@/lib/production-guard';
@@ -72,7 +73,10 @@ export async function verifySessionTokenEdge(
       userId: parsed.userId,
       email: parsed.email,
       name: parsed.name,
-      role: parsed.role,
+      role: ['root', 'admin', 'operator', 'accountant', 'customer'].includes(parsed.role)
+        ? (parsed.role as SessionRole)
+        : 'operator',
+      tenantId: String(parsed.tenantId ?? 'default'),
     };
   } catch {
     return null;
@@ -89,6 +93,7 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith('/api/auth/register-config')) return true;
   if (pathname === '/api/store/stock-price') return true;
   if (pathname === '/api/cron/trendyol-sync') return true;
+  if (pathname.startsWith('/api/cron/license-check')) return true;
   if (pathname.startsWith('/api/auth/dev-reset-users')) return true;
   if (pathname.startsWith('/api/auth/logout')) return true;
   if (pathname.startsWith('/api/auth/me')) return true;

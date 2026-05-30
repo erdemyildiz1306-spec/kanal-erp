@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
+import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -17,23 +19,28 @@ function daysAgo(n: number) {
 
 const DAY_LABELS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await connectToDatabase();
+    const session = getSessionFromRequest(request);
+    const scope = tenantScope(session);
 
     const since7 = daysAgo(6);
     const orders = await Order.find({
+      ...scope,
       createdAt: { $gte: since7 },
       status: { $ne: 'İptal Edildi' },
     })
       .select('platform totalAmount profitAmount costAmount createdAt status')
       .lean();
 
-    const productCount = await Product.countDocuments({});
+    const productCount = await Product.countDocuments(scope);
     const criticalStock = await Product.countDocuments({
+      ...scope,
       $expr: { $lte: ['$stock', '$safetyStock'] },
     });
     const pendingOrders = await Order.countDocuments({
+      ...scope,
       status: { $in: ['Beklemede', 'Yeni', 'Hazırlanıyor'] },
     });
 
@@ -89,7 +96,7 @@ export async function GET() {
     const tyPct = channelTotal > 0 ? Math.round((tyTotal / channelTotal) * 100) : 0;
     const webPct = channelTotal > 0 ? 100 - tyPct : 0;
 
-    const recentOrders = await Order.find({ status: { $ne: 'İptal Edildi' } })
+    const recentOrders = await Order.find({ ...scope, status: { $ne: 'İptal Edildi' } })
       .sort({ createdAt: -1 })
       .limit(6)
       .select('orderNumber platform customerName totalAmount status createdAt')

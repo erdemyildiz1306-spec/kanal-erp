@@ -14,7 +14,8 @@ const OrderItemSchema = new mongoose.Schema({
 }, { _id: false });
 
 const OrderSchema = new mongoose.Schema({
-  orderNumber: { type: String, required: true, unique: true },
+  tenantId: { type: String, default: 'default', index: true },
+  orderNumber: { type: String, required: true },
   platform: {
     type: String,
     enum: ['trendyol', 'web', 'retail', 'b2b'],
@@ -96,7 +97,9 @@ const OrderSchema = new mongoose.Schema({
   stockReserved: { type: Boolean, default: false },
 }, { timestamps: true });
 
+OrderSchema.index({ tenantId: 1, orderNumber: 1 }, { unique: true });
 OrderSchema.index({ createdAt: -1 });
+OrderSchema.index({ tenantId: 1, platform: 1, status: 1, createdAt: -1 });
 OrderSchema.index({ platform: 1, status: 1, createdAt: -1 });
 OrderSchema.index({ platform: 1, 'storeInvoice.status': 1, createdAt: -1 });
 OrderSchema.index({ platform: 1, 'trendyolInvoice.status': 1, createdAt: -1 });

@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
-import { verifyStoreApiBearer } from '@/lib/store-api-auth';
+import { resolveStoreTenantFromBearer } from '@/lib/store-api-auth';
+import { mergeTenant } from '@/lib/tenant-query';
 
 /** Mağaza sözleşmesi: POST { source, items[] } — yerel ürün stok/fiyat günceller */
 export async function POST(request: Request) {
   try {
-    if (!(await verifyStoreApiBearer(request))) {
+    const tenantId = await resolveStoreTenantFromBearer(request);
+    if (!tenantId) {
       return NextResponse.json(
         { success: false, error: 'Geçersiz veya eksik API token (Authorization: Bearer …).' },
         { status: 401 }
@@ -34,11 +36,10 @@ export async function POST(request: Request) {
       const salePrice = Math.max(0, Number(row.salePrice) || 0);
       const listPrice = Math.max(0, Number(row.listPrice) || salePrice);
 
-      const filter =
-        barcode ? { barcode } : sku ? { sku } : null;
-      if (!filter) continue;
+      const baseFilter = barcode ? { barcode } : sku ? { sku } : null;
+      if (!baseFilter) continue;
 
-      const p = await Product.findOne(filter);
+      const p = await Product.findOne(mergeTenant(tenantId, baseFilter));
       if (!p) continue;
 
       if (p.hasVariants && barcode && Array.isArray(p.variants)) {

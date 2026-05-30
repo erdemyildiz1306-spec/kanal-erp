@@ -3,8 +3,9 @@ import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import { randomBytes } from 'crypto';
 import { put } from '@vercel/blob';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 import { detectProductImageMime } from '@/lib/file-mime-verify';
 import {
   isTrendyolPublicImageUrl,
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
     const ext = extForMime(detectedMime);
     const name = `products/${Date.now()}-${randomBytes(6).toString('hex')}.${ext}`;
 
-    const settingsDoc = await resolveSingletonSettingDocument();
+    const settingsDoc = await resolveSettingDocument(tenantScope(session).tenantId);
     const imageBase = getEffectivePublicAppUrl(
       String(settingsDoc.get('publicAppUrl') ?? '')
     );

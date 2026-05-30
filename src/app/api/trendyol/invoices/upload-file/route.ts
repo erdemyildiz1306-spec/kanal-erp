@@ -16,6 +16,8 @@ import {
   requireInvoiceSession,
   storeInvoiceErrorResponse,
 } from '@/lib/store-invoice-api';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +29,13 @@ export async function POST(request: Request) {
     if (session instanceof NextResponse) return session;
     const limited = enforceInvoiceRateLimit(session.userId);
     if (limited) return limited;
+
+    await connectToDatabase();
+    const { tenantId } = tenantScope(session);
+    const mod = await assertIntegrationModuleEnabled('trendyolEfaturam', tenantId, session);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
 
     const form = await request.formData();
     const orderId = assertValidStoreOrderId(String(form.get('orderId') ?? ''));
@@ -55,6 +64,9 @@ export async function POST(request: Request) {
     if (!order || order.platform !== 'trendyol') {
       throw new StoreInvoiceError('Trendyol siparişi bulunamadı.', 404);
     }
+    if (!belongsToTenant(session, order.tenantId)) {
+      throw new StoreInvoiceError('Yetkisiz.', 403);
+    }
     const packageId = String(order.packageId ?? '').trim();
     if (!/^\d+$/.test(packageId)) {
       throw new StoreInvoiceError('Geçerli paket numarası yok.', 400);
@@ -70,7 +82,7 @@ export async function POST(request: Request) {
     }
 
     const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/jpeg' ? 'jpg' : 'pdf';
-    const settings = await getTrendyolSettings();
+    const settings = await getTrendyolSettings(tenantId);
 
     await uploadTrendyolInvoiceFile({
       sellerId: settings.sellerId,

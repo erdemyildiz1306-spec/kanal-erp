@@ -13,6 +13,12 @@ type OrderEventRow = {
   createdAt?: string;
 };
 
+function isNativeShell(): boolean {
+  if (typeof window === "undefined") return false;
+  const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return Boolean(cap?.isNativePlatform?.());
+}
+
 /** Yeni Trendyol siparişlerini poll eder; tarayıcı bildirimi + header yenileme. */
 export default function OrderNotifyPoller() {
   const sinceRef = useRef(new Date().toISOString());
@@ -23,6 +29,7 @@ export default function OrderNotifyPoller() {
     if (typeof window === "undefined") return;
 
     const requestPermission = async () => {
+      if (isNativeShell()) return;
       if (!("Notification" in window)) return;
       if (Notification.permission === "default") {
         try {
@@ -62,7 +69,11 @@ export default function OrderNotifyPoller() {
           new CustomEvent("erp-order-notify", { detail: { events: fresh } })
         );
 
-        if ("Notification" in window && Notification.permission === "granted") {
+        if (
+          !isNativeShell() &&
+          "Notification" in window &&
+          Notification.permission === "granted"
+        ) {
           for (const ev of fresh.slice(0, 3)) {
             const n = new Notification(ev.title || "Yeni sipariş", {
               body: ev.body || "",

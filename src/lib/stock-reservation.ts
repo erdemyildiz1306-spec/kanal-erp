@@ -11,6 +11,8 @@ import {
 } from '@/lib/inventory';
 import { pushStockAfterOrder } from '@/lib/channel-sync';
 import { deductThresholdRank, orderStatusRank } from '@/lib/order-stock';
+import { resolveOrderWarehouseId } from '@/lib/order-warehouse';
+import { orderByNumber } from '@/lib/tenant-query';
 
 export function isStatusBelowStockThreshold(
   status: string,
@@ -36,6 +38,8 @@ export async function applyOrderStockReserve(
   order: {
     orderNumber: string;
     platform?: string;
+    warehouseId?: string;
+    tenantId?: string;
     items?: Array<{
       sku?: string;
       barcode?: string;
@@ -47,6 +51,9 @@ export async function applyOrderStockReserve(
 ): Promise<{ applied: boolean; adjustedLines: number }> {
   const orderNumber = String(order.orderNumber ?? '');
   if (!orderNumber) return { applied: false, adjustedLines: 0 };
+
+  const warehouseId = await resolveOrderWarehouseId(order);
+  const tenantId = order.tenantId;
 
   const already =
     (await hasOrderStockReserve(orderNumber)) ||
@@ -66,6 +73,8 @@ export async function applyOrderStockReserve(
       reference: orderNumber,
       userId: opts?.userId,
       userName: opts?.userName,
+      warehouseId,
+      tenantId,
     });
     if (!skipped) adjustedLines++;
     if (updated && !touched.has(String(updated._id))) {
@@ -78,16 +87,18 @@ export async function applyOrderStockReserve(
   }
 
   if (adjustedLines > 0) {
-    await Order.updateOne(
-      { orderNumber },
-      { $set: { stockReserved: true, stockApplied: false } }
-    );
+    await Order.updateOne(orderByNumber(tenantId, orderNumber), {
+      $set: { stockReserved: true, stockApplied: false },
+    });
   }
   return { applied: adjustedLines > 0, adjustedLines };
 }
 
 /** Rezerv hareketlerini kesin düşüme çevir — stok miktarı değişmez */
-export async function finalizeOrderStockReserve(orderNumber: string): Promise<boolean> {
+export async function finalizeOrderStockReserve(
+  orderNumber: string,
+  tenantId?: string
+): Promise<boolean> {
   const ref = String(orderNumber ?? '').trim();
   if (!ref) return false;
 
@@ -102,15 +113,17 @@ export async function finalizeOrderStockReserve(orderNumber: string): Promise<bo
     { reference: ref, reason: 'order_reserve' },
     { $set: { reason: 'order' } }
   );
-  await Order.updateOne(
-    { orderNumber: ref },
-    { $set: { stockApplied: true, stockReserved: false } }
-  );
+  await Order.updateOne(orderByNumber(tenantId, ref), {
+    $set: { stockApplied: true, stockReserved: false },
+  });
   return true;
 }
 
 /** İptal öncesi rezerv geri yükle */
-export async function restoreOrderStockReserve(orderNumber: string): Promise<number> {
+export async function restoreOrderStockReserve(
+  orderNumber: string,
+  tenantId?: string
+): Promise<number> {
   const ref = String(orderNumber ?? '').trim();
   if (!ref) return 0;
 
@@ -122,8 +135,14 @@ export async function restoreOrderStockReserve(orderNumber: string): Promise<num
 
   if (!movements.length) return 0;
 
-  const order = await Order.findOne({ orderNumber: ref }).lean();
+  const order = await Order.findOne(orderByNumber(tenantId, ref)).lean();
   if (!order) return 0;
+
+  const warehouseId = await resolveOrderWarehouseId({
+    warehouseId: order.warehouseId,
+    orderNumber: ref,
+    tenantId: order.tenantId,
+  });
 
   let restored = 0;
   const { adjustProductStock, findProductBySkuOrBarcode, resolveVariantMatch } =
@@ -132,7 +151,7 @@ export async function restoreOrderStockReserve(orderNumber: string): Promise<num
   for (const mv of movements) {
     const qty = Math.abs(Number(mv.delta) || 0);
     if (qty <= 0) continue;
-    const raw = await findProductBySkuOrBarcode(mv.sku, mv.barcode);
+    const raw = await findProductBySkuOrBarcode(mv.sku, mv.barcode, order.tenantId);
     if (!raw) continue;
     const match = resolveVariantMatch(raw, mv.sku, mv.barcode, '');
     await adjustProductStock({
@@ -142,15 +161,15 @@ export async function restoreOrderStockReserve(orderNumber: string): Promise<num
       reference: `${ref}:reserve-restore`,
       sku: mv.sku,
       barcode: mv.barcode,
+      warehouseId,
     });
     restored += qty;
   }
 
   await StockMovement.deleteMany({ reference: ref, reason: 'order_reserve' });
-  await Order.updateOne(
-    { orderNumber: ref },
-    { $set: { stockReserved: false, stockApplied: false } }
-  );
+  await Order.updateOne(orderByNumber(order.tenantId ?? tenantId, ref), {
+    $set: { stockReserved: false, stockApplied: false },
+  });
 
   return restored;
 }

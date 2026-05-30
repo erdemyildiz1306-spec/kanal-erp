@@ -4,6 +4,7 @@ import Order from '@/models/Order';
 import Product from '@/models/Product';
 import { computeFinanceAnalytics } from '@/lib/profit-analytics';
 import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 const MAX_ORDERS = 5000;
 
@@ -34,11 +35,13 @@ export async function GET(request: Request) {
     if (session instanceof NextResponse) return session;
 
     await connectToDatabase();
+    const scope = tenantScope(session);
     const { searchParams } = new URL(request.url);
     const range = searchParams.get('range') || 'Bu Ay';
     const since = rangeStart(range);
 
     const orders = await Order.find({
+      ...scope,
       createdAt: { $gte: since },
       status: { $ne: 'İptal Edildi' },
     })
@@ -81,7 +84,7 @@ export async function GET(request: Request) {
     const skus = topProducts.map((_, i) => [...productSales.keys()][i]).filter(Boolean);
     const stockMap = new Map<string, number>();
     if (skus.length) {
-      const products = await Product.find({ sku: { $in: skus } })
+      const products = await Product.find({ ...scope, sku: { $in: skus } })
         .select('sku stock')
         .lean();
       for (const p of products) {
@@ -98,6 +101,7 @@ export async function GET(request: Request) {
     });
 
     const lowStock = await Product.find({
+      ...scope,
       $expr: { $lte: ['$stock', '$safetyStock'] },
     })
       .select('name sku stock safetyStock')
@@ -116,7 +120,7 @@ export async function GET(request: Request) {
             : range === 'Son 3 Ay'
               ? '30g'
               : 'bu-ay';
-      const fin = await computeFinanceAnalytics(finRange);
+      const fin = await computeFinanceAnalytics(finRange, scope.tenantId);
       financeHasData = fin.hasFinanceData;
       if (fin.hasFinanceData) financeNetProfit = fin.kpis.netProfit;
     } catch {

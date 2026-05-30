@@ -3,11 +3,23 @@ import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { getTrendyolSettings, updateTrendyolStockAndPrice, formatTrendyolAxiosError } from '@/lib/trendyol';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 
 /** Seçilen ürünlerin Trendyol satış fiyatı + stoku (price-and-inventory). Liste ₺ → listPrice, Trendyol ₺ → salePrice */
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof Response) return session;
+
+    const { tenantId } = tenantScope(session);
     await connectToDatabase();
+
+    const mod = await assertIntegrationModuleEnabled('trendyolSeller', tenantId);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
 
     let body: { productIds?: string[] };
     try {
@@ -30,12 +42,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const products = await Product.find({ _id: { $in: ids } }).exec();
+    const products = await Product.find({ tenantId, _id: { $in: ids } }).exec();
     if (products.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Seçilen ürünler bulunamadı.' },
         { status: 404 }
       );
+    }
+
+    for (const p of products) {
+      if (!belongsToTenant(session, p.tenantId)) {
+        return NextResponse.json({ success: false, error: 'Yetkisiz ürün seçimi.' }, { status: 403 });
+      }
     }
 
     type TyItem = {
@@ -96,7 +114,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const settings = await getTrendyolSettings();
+    const settings = await getTrendyolSettings(tenantId);
     const chunkSize = 100;
     const chunks: TyItem[][] = [];
     for (let i = 0; i < items.length; i += chunkSize) {

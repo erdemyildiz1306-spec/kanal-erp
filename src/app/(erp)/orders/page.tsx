@@ -953,12 +953,18 @@ export default function OrdersPage() {
                 </div>
               </div>
               {selectedOrder?.platform === "trendyol" && orderIsDhl(selectedOrder) ? (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-950 leading-relaxed">
-                  <strong>DHL (Trendyol anlaşması):</strong> Resmi kargo etiketini DHL eCommerce
-                  veya Trendyol satıcı panelinden yazdırın. Ortak etiket API bu taşıyıcıda
-                  çalışmaz. DHL&apos;den aldığınız takip numarasını yukarıya girip{" "}
-                  <strong>«DHL takip → Trendyol&apos;a ilet»</strong> ile gönderin. Paket içi
-                  listesi için <strong>Paket çıktısı (PDF)</strong> kullanın.
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-3 text-xs text-amber-950 leading-relaxed space-y-2">
+                  <p className="font-semibold text-sm">DHL kargo — 3 adım</p>
+                  <ol className="list-decimal list-inside space-y-1">
+                    <li>DHL eCommerce / Trendyol panelinden resmi etiketi yazdırın.</li>
+                    <li>Takip numarasını aşağıdaki alana girin.</li>
+                    <li>
+                      <strong>«DHL takip → Trendyol&apos;a ilet»</strong> ile Trendyol&apos;a bildirin.
+                    </li>
+                  </ol>
+                  <p>
+                    Ortak etiket API DHL&apos;de yok. Paket listesi: <strong>Paket çıktısı (PDF)</strong>.
+                  </p>
                 </div>
               ) : null}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1009,23 +1015,37 @@ export default function OrdersPage() {
                       <th className="text-left py-2 px-3">Ürün</th>
                       <th className="text-left py-2 px-3">SKU / Barkod</th>
                       <th className="text-right py-2 px-3">Adet</th>
+                      <th className="text-right py-2 px-3">Birim</th>
+                      <th className="text-right py-2 px-3">Maliyet</th>
+                      <th className="text-right py-2 px-3">Satır kârı</th>
                       <th className="text-right py-2 px-3">Tutar</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedOrder.items?.map((item: any, idx: number) => (
+                    {selectedOrder.items?.map((item: any, idx: number) => {
+                      const qty = Number(item.quantity) || 1;
+                      const unit = Number(item.unitPrice) || 0;
+                      const lineTotal = unit * qty;
+                      const lineCost = (Number(item.costPrice) || 0) * qty;
+                      const lineProfit = lineTotal - lineCost;
+                      return (
                       <tr key={idx} className="border-t border-slate-100">
                         <td className="py-2 px-3 font-medium">{item.productName}</td>
                         <td className="py-2 px-3 text-slate-500">
                           {item.sku}
                           {item.barcode ? ` · ${item.barcode}` : ""}
                         </td>
-                        <td className="py-2 px-3 text-right">{item.quantity}</td>
+                        <td className="py-2 px-3 text-right">{qty}</td>
+                        <td className="py-2 px-3 text-right">₺{unit.toFixed(2)}</td>
+                        <td className="py-2 px-3 text-right text-slate-600">₺{lineCost.toFixed(2)}</td>
+                        <td className={`py-2 px-3 text-right font-medium ${lineProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                          ₺{lineProfit.toFixed(2)}
+                        </td>
                         <td className="py-2 px-3 text-right font-semibold">
-                          ₺{((item.unitPrice || 0) * (item.quantity || 1)).toFixed(2)}
+                          ₺{lineTotal.toFixed(2)}
                         </td>
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               </div>

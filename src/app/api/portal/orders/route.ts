@@ -4,12 +4,19 @@ import Order from '@/models/Order';
 import Customer from '@/models/Customer';
 import Warehouse from '@/models/Warehouse';
 import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 import { decrementForOrderItemIfNotApplied } from '@/lib/inventory';
 import { MAIN_WAREHOUSE_ID } from '@/lib/warehouse-stock';
 import { generateB2BOrderNumber, resolvePortalLine } from '@/lib/portal-orders';
 
-async function getCustomerOrders(customerId: string, customerName: string) {
+async function getCustomerOrders(
+  customerId: string,
+  customerName: string,
+  tenantId: string
+) {
   return Order.find({
+    ...mergeTenant(tenantId, {}),
     platform: 'b2b',
     $or: [{ customerId }, { customerName, customerId: { $exists: false } }],
   })
@@ -31,7 +38,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Müşteri bulunamadı.' }, { status: 404 });
     }
 
-    const orders = await getCustomerOrders(String(customer._id), customer.name);
+    const orders = await getCustomerOrders(
+      String(customer._id),
+      customer.name,
+      tenantScope(session).tenantId
+    );
     return NextResponse.json({ success: true, orders });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';
@@ -65,7 +76,10 @@ export async function POST(request: Request) {
     };
 
     const warehouseId = String(body.warehouseId ?? MAIN_WAREHOUSE_ID);
-    const wh = await Warehouse.findOne({ warehouseId, active: { $ne: false } });
+    const tenantId = tenantScope(session).tenantId;
+    const wh = await Warehouse.findOne(
+      mergeTenant(tenantId, { warehouseId, active: { $ne: false } })
+    );
     if (!wh) {
       return NextResponse.json({ success: false, error: 'Geçersiz depo.' }, { status: 400 });
     }
@@ -99,6 +113,7 @@ export async function POST(request: Request) {
 
     const orderNumber = generateB2BOrderNumber();
     const order = await Order.create({
+      tenantId,
       orderNumber,
       platform: 'b2b',
       status: 'Beklemede',
@@ -125,6 +140,7 @@ export async function POST(request: Request) {
         userId: session.userId,
         userName: session.name,
         warehouseId,
+        tenantId,
       });
       if (product) stockApplied = true;
     }

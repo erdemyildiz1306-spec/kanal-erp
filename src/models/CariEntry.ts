@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const CariEntrySchema = new mongoose.Schema(
   {
+    tenantId: { type: String, default: 'default', index: true },
     type: { type: String, enum: ['gelir', 'gider', 'tahsilat', 'duzeltme'], required: true },
     amount: { type: Number, required: true },
     description: { type: String, default: '' },
@@ -13,6 +14,8 @@ const CariEntrySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+CariEntrySchema.index({ tenantId: 1, createdAt: -1 });
 
 export default mongoose.models.CariEntry ||
   mongoose.model('CariEntry', CariEntrySchema);

@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 
 const SettingSchema = new mongoose.Schema({
-  settingsId: { type: String, default: 'global', unique: true },
+  settingsId: { type: String, default: 'global' },
+  /** Kuruluş / tenant — her kuruluşun ayrı ayar belgesi */
+  tenantId: { type: String, default: 'default', index: true },
 
   trendyolSellerId: { type: String, default: '' },
   trendyolApiKey: { type: String, default: '' },
@@ -28,6 +30,9 @@ const SettingSchema = new mongoose.Schema({
 
   webApiUrl: { type: String, default: '' },
   webApiToken: { type: String, default: '' },
+  /** WordPress / WooCommerce REST API */
+  wpApiUrl: { type: String, default: '' },
+  wpApiToken: { type: String, default: '' },
   /** Taban URL sonuna eklenir; varsayılan stock-price */
   webApiStockPath: { type: String, default: 'stock-price' },
   /** Doluysa taban+yol yerine doğrudan bu URL kullanılır (özel yazılım) */
@@ -59,6 +64,17 @@ const SettingSchema = new mongoose.Schema({
     activityLog: { type: Boolean, default: true },
     users: { type: Boolean, default: true },
   },
+
+  /** Ayarlar sekmesi entegrasyon modülleri */
+  integrationModulesEnabled: {
+    trendyolSeller: { type: Boolean, default: true },
+    webStoreApi: { type: Boolean, default: true },
+    trendyolEfaturam: { type: Boolean, default: false },
+    wordpress: { type: Boolean, default: false },
+  },
+
+  /** Trendyol siparişlerinin varsayılan depo kodu */
+  trendyolDefaultWarehouseId: { type: String, default: 'main' },
 
   /** Fatura başlığı (ERP / e-Arşiv entegrasyonu için) */
   companyLegalTitle: { type: String, default: '' },
@@ -113,5 +129,7 @@ const SettingSchema = new mongoose.Schema({
   efaturamDefaultVatRate: { type: Number, default: 20 },
   efaturamAutoMarkInvoiced: { type: Boolean, default: true },
 }, { timestamps: true });
+
+SettingSchema.index({ tenantId: 1 }, { unique: true });
 
 export default mongoose.models.Setting || mongoose.model('Setting', SettingSchema);

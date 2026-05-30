@@ -9,11 +9,16 @@ import {
 import { logActivity } from '@/lib/activity-log';
 import { pushStockAfterOrder } from '@/lib/channel-sync';
 import { hasOrderStockReserve, restoreOrderStockReserve } from '@/lib/stock-reservation';
+import { resolveOrderWarehouseId } from '@/lib/order-warehouse';
+import { orderByNumber } from '@/lib/tenant-query';
 
-async function orderStockFullyRestored(orderNumber: string): Promise<boolean> {
+async function orderStockFullyRestored(
+  orderNumber: string,
+  tenantId?: string
+): Promise<boolean> {
   const ref = String(orderNumber ?? '').trim();
   if (!ref) return false;
-  const order = await Order.findOne({ orderNumber: ref }).lean();
+  const order = await Order.findOne(orderByNumber(tenantId, ref)).lean();
   if (!order?.items?.length) return false;
 
   for (const line of order.items) {
@@ -22,6 +27,7 @@ async function orderStockFullyRestored(orderNumber: string): Promise<boolean> {
       sku: line.sku,
       barcode: line.barcode,
       productName: line.productName,
+      tenantId: order.tenantId,
     });
     if (!restored) return false;
   }
@@ -29,15 +35,20 @@ async function orderStockFullyRestored(orderNumber: string): Promise<boolean> {
 }
 
 /** İptal / iade siparişinde stok geri yükle (satır bazlı idempotent). */
-export async function restoreOrderStockIfApplied(orderNumber: string): Promise<number> {
+export async function restoreOrderStockIfApplied(
+  orderNumber: string,
+  tenantId?: string
+): Promise<number> {
   const ref = String(orderNumber ?? '').trim();
   if (!ref) return 0;
 
-  const order = await Order.findOne({ orderNumber: ref }).lean();
+  const order = await Order.findOne(orderByNumber(tenantId, ref)).lean();
   if (!order) return 0;
 
+  const orderTenantId = order.tenantId ?? tenantId;
+
   if (order.stockReserved || (await hasOrderStockReserve(ref))) {
-    const restored = await restoreOrderStockReserve(ref);
+    const restored = await restoreOrderStockReserve(ref, orderTenantId);
     if (restored > 0) {
       await logActivity({
         action: 'stock_restore',
@@ -52,14 +63,21 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
     Boolean(order.stockApplied) || (await orderHasStockDeductions(ref));
   if (!hadDeduction) return 0;
 
-  if (await orderStockFullyRestored(ref)) {
-    await Order.updateOne({ orderNumber: ref }, { $set: { stockApplied: false } });
+  if (await orderStockFullyRestored(ref, orderTenantId)) {
+    await Order.updateOne(orderByNumber(orderTenantId, ref), {
+      $set: { stockApplied: false },
+    });
     return 0;
   }
 
   let restored = 0;
   const missed: string[] = [];
   const touched = new Set<string>();
+  const warehouseId = await resolveOrderWarehouseId({
+    warehouseId: order.warehouseId,
+    orderNumber: ref,
+    tenantId: order.tenantId,
+  });
 
   for (const line of order.items ?? []) {
     const already = await orderLineStockAlreadyRestored({
@@ -67,10 +85,11 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
       sku: line.sku,
       barcode: line.barcode,
       productName: line.productName,
+      tenantId: orderTenantId,
     });
     if (already) continue;
 
-    const raw = await findProductBySkuOrBarcode(line.sku, line.barcode);
+    const raw = await findProductBySkuOrBarcode(line.sku, line.barcode, orderTenantId);
     if (!raw) {
       missed.push(String(line.sku || line.barcode || 'satır'));
       continue;
@@ -85,6 +104,7 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
       sku: line.sku,
       barcode: line.barcode,
       productName: line.productName,
+      warehouseId,
     });
     restored += qty;
     const pid = String(updated._id);
@@ -97,11 +117,10 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
     }
   }
 
-  if (restored > 0 || (await orderStockFullyRestored(ref))) {
-    await Order.updateOne(
-      { orderNumber: ref },
-      { $set: { stockApplied: false, trendyolIadeIslendi: true } }
-    );
+  if (restored > 0 || (await orderStockFullyRestored(ref, orderTenantId))) {
+    await Order.updateOne(orderByNumber(orderTenantId, ref), {
+      $set: { stockApplied: false, trendyolIadeIslendi: true },
+    });
     if (restored > 0) {
       await logActivity({
         action: 'stock_restore',
@@ -116,14 +135,15 @@ export async function restoreOrderStockIfApplied(orderNumber: string): Promise<n
 
 /** İptal — durum güncelle + stok geri yükle */
 export async function processTrendyolOrderCancel(
-  orderNumber: string
+  orderNumber: string,
+  tenantId?: string
 ): Promise<{ restored: number; statusUpdated: boolean }> {
   const ref = String(orderNumber ?? '').trim();
   if (!ref) return { restored: 0, statusUpdated: false };
 
-  const restored = await restoreOrderStockIfApplied(ref);
+  const restored = await restoreOrderStockIfApplied(ref, tenantId);
   const upd = await Order.updateOne(
-    { orderNumber: ref, status: { $nin: ['İptal Edildi'] } },
+    { ...orderByNumber(tenantId, ref), status: { $nin: ['İptal Edildi'] } },
     { $set: { status: 'İptal Edildi' } }
   );
   return { restored, statusUpdated: (upd.modifiedCount ?? 0) > 0 };
@@ -131,14 +151,18 @@ export async function processTrendyolOrderCancel(
 
 /** İade — durum güncelle + stok geri yükle */
 export async function processTrendyolOrderReturn(
-  orderNumber: string
+  orderNumber: string,
+  tenantId?: string
 ): Promise<{ restored: number; statusUpdated: boolean }> {
   const ref = String(orderNumber ?? '').trim();
   if (!ref) return { restored: 0, statusUpdated: false };
 
-  const restored = await restoreOrderStockIfApplied(ref);
+  const restored = await restoreOrderStockIfApplied(ref, tenantId);
   const upd = await Order.updateOne(
-    { orderNumber: ref, status: { $nin: ['İade Edildi', 'İptal Edildi'] } },
+    {
+      ...orderByNumber(tenantId, ref),
+      status: { $nin: ['İade Edildi', 'İptal Edildi'] },
+    },
     { $set: { status: 'İade Edildi' } }
   );
   return { restored, statusUpdated: (upd.modifiedCount ?? 0) > 0 };

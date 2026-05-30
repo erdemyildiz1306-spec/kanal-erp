@@ -6,6 +6,9 @@ import {
   createSessionToken,
   sessionCookieOptions,
 } from '@/lib/auth';
+import { resolveSessionRole } from '@/lib/root-auth';
+import { assertTenantOperational, applyTrialToTenant } from '@/lib/tenant-license';
+import { ensureDefaultTenant } from '@/lib/tenant';
 import { checkRateLimit, clientIp } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
@@ -36,6 +39,8 @@ export async function POST(request: Request) {
 
     const userCount = await User.countDocuments({});
     if (userCount === 0) {
+      await ensureDefaultTenant();
+      await applyTrialToTenant('default');
       const passwordHash = await bcrypt.hash(password, 10);
       const created = await User.create({
         email,
@@ -43,12 +48,14 @@ export async function POST(request: Request) {
         passwordHash,
         role: 'admin',
         active: true,
+        tenantId: 'default',
       });
       const token = createSessionToken({
         userId: String(created._id),
         email: created.email,
         name: created.name,
         role: created.role,
+        tenantId: 'default',
       });
       const res = NextResponse.json({
         success: true,
@@ -93,11 +100,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const role = resolveSessionRole(user.email, user.role);
+    const tenantId = String(user.tenantId ?? 'default');
+
+    if (role !== 'root') {
+      const op = await assertTenantOperational(tenantId);
+      if (!op.ok) {
+        return NextResponse.json({ success: false, error: op.error }, { status: 403 });
+      }
+    }
+
     const token = createSessionToken({
       userId: String(user._id),
       email: user.email,
       name: user.name,
-      role: user.role,
+      role,
+      tenantId,
     });
 
     const res = NextResponse.json({
@@ -105,8 +123,9 @@ export async function POST(request: Request) {
       user: {
         email: user.email,
         name: user.name,
-        role: user.role,
+        role,
       },
+      redirect: role === 'root' ? '/root' : '/',
     });
     res.cookies.set(sessionCookieOptions(token));
     return res;

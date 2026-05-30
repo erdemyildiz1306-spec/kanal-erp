@@ -10,6 +10,7 @@ import Product from '@/models/Product';
 import { computeDetailedProfits } from '@/lib/profit-detail';
 import { netVatFromInclusive } from '@/lib/profit-vat';
 import { computeCampaignProfitability } from '@/lib/campaign-profit';
+import { normalizeTenantId } from '@/lib/tenant';
 import {
   deductionAmount,
   isAdSpendFinanceRow,
@@ -75,11 +76,16 @@ function saleCommission(row: {
   return Math.max(fromField, implied);
 }
 
-export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
+export async function computeFinanceAnalytics(
+  range: FinanceRange = '30g',
+  tenantId?: string
+) {
   await connectToDatabase();
+  const scope = tenantId ? { tenantId: normalizeTenantId(tenantId) } : {};
   const { since, until } = rangeDates(range);
 
   const txRows = await FinancialTransaction.find({
+    ...scope,
     transactionDate: { $gte: since, $lte: until },
   }).lean();
 
@@ -191,6 +197,7 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
   }
 
   const manualAdRows = await AdSpendEntry.find({
+    ...scope,
     spendDate: { $gte: since, $lte: until },
   }).lean();
   const manualAdSpend = manualAdRows.reduce(
@@ -199,6 +206,7 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
   );
 
   const trendyolOrders = await Order.find({
+    ...scope,
     platform: 'trendyol',
     createdAt: { $gte: since, $lte: until },
     status: { $ne: 'İptal Edildi' },
@@ -227,6 +235,7 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
   const barcodes = [...productAgg.keys()];
   if (barcodes.length) {
     const products = await Product.find({
+      ...scope,
       $or: [{ barcode: { $in: barcodes } }, { 'variants.barcode': { $in: barcodes } }],
     })
       .select('name barcode variants')
@@ -269,6 +278,7 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
     totalServiceFee: serviceFee,
     totalStopaj: stopaj,
     totalAdSpend: adSpend,
+    tenantId,
   });
 
   const cargoFromOrders = detailed.orderRows.reduce((a, r) => a + r.cargoFee, 0);
@@ -316,6 +326,7 @@ export async function computeFinanceAnalytics(range: FinanceRange = '30g') {
   const barcodesDetailed = detailed.productRows.map((p) => p.barcode).filter(Boolean);
   if (barcodesDetailed.length) {
     const products = await Product.find({
+      ...scope,
       $or: [
         { barcode: { $in: barcodesDetailed } },
         { 'variants.barcode': { $in: barcodesDetailed } },

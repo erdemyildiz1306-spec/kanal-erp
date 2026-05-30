@@ -154,7 +154,9 @@ function LoginForm() {
         setError(data.error || "Giriş başarısız.");
         return;
       }
-      router.replace(mode === "customer" ? "/portal" : next);
+      router.replace(
+        mode === "customer" ? "/portal" : String(data.redirect ?? next)
+      );
       router.refresh();
     } catch {
       setError("Bağlantı hatası.");

@@ -8,11 +8,13 @@ import {
   finalizeOrderStockReserve,
   hasOrderStockReserve,
 } from '@/lib/stock-reservation';
+import { resolveOrderWarehouseId } from '@/lib/order-warehouse';
 import {
   getTrendyolSettings,
   updateTrendyolPackageStatus,
   formatTrendyolAxiosError,
 } from '@/lib/trendyol';
+import { orderByNumber } from '@/lib/tenant-query';
 
 /** Stok düşümü bu durumlarda yapılır (Trendyol: etiket / işleme alındı sonrası). */
 export const STOCK_DEDUCT_STATUSES = new Set([
@@ -90,6 +92,8 @@ type OrderLike = {
   status?: string;
   stockApplied?: boolean;
   stockReserved?: boolean;
+  warehouseId?: string;
+  tenantId?: string;
   packageId?: string;
   items?: Array<{
     sku?: string;
@@ -115,6 +119,8 @@ export async function applyOrderStockDeduction(
   const items = order.items ?? [];
   if (items.length === 0) return { applied: false, adjustedLines: 0 };
 
+  const warehouseId = await resolveOrderWarehouseId(order);
+  const tenantId = order.tenantId;
   const touched = new Set<string>();
   let adjustedLines = 0;
 
@@ -128,6 +134,8 @@ export async function applyOrderStockDeduction(
       reference: orderNumber,
       userId: opts?.userId,
       userName: opts?.userName,
+      warehouseId,
+      tenantId,
     });
     if (!skipped) adjustedLines++;
     if (updated && !touched.has(String(updated._id))) {
@@ -140,7 +148,9 @@ export async function applyOrderStockDeduction(
   }
 
   if (adjustedLines > 0) {
-    await Order.updateOne({ orderNumber }, { $set: { stockApplied: true } });
+    await Order.updateOne(orderByNumber(tenantId, orderNumber), {
+      $set: { stockApplied: true },
+    });
   }
   return { applied: adjustedLines > 0, adjustedLines };
 }
@@ -176,7 +186,7 @@ export async function notifyTrendyolOrderPicking(order: OrderLike): Promise<{
   }
 
   try {
-    const settings = await getTrendyolSettings();
+    const settings = await getTrendyolSettings(order.tenantId);
     await updateTrendyolPackageStatus({
       sellerId: settings.sellerId,
       apiKey: settings.apiKey,
@@ -226,17 +236,16 @@ export async function processOrderForFulfillment(
     (await hasOrderStockReserve(order.orderNumber));
 
   if (reserved) {
-    const finalized = await finalizeOrderStockReserve(order.orderNumber);
+    const finalized = await finalizeOrderStockReserve(order.orderNumber, order.tenantId);
     stockApplied = finalized || stockApplied;
   } else {
     const stock = await applyOrderStockDeduction(order, opts);
     stockApplied = stock.applied || stockApplied;
   }
 
-  await Order.updateOne(
-    { orderNumber: order.orderNumber },
-    { $set: { status: 'Hazırlanıyor', stockApplied, stockReserved: false } }
-  );
+  await Order.updateOne(orderByNumber(order.tenantId, order.orderNumber), {
+    $set: { status: 'Hazırlanıyor', stockApplied, stockReserved: false },
+  });
 
   return {
     success: true,

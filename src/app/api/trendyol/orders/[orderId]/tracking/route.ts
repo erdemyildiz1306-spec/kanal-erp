@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 import {
   getTrendyolSettings,
   updateTrendyolShipmentTrackingDetails,
   formatTrendyolAxiosError,
 } from '@/lib/trendyol';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
 import {
   isTrendyolDhlCargo,
   trendyolDhlProviderCode,
@@ -42,6 +44,13 @@ export async function PUT(
     }
 
     await connectToDatabase();
+
+    const tenantId = tenantScope(session).tenantId;
+    const mod = await assertIntegrationModuleEnabled('trendyolSeller', tenantId);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
+
     const order = await Order.findById(orderId).lean();
     if (!order || order.platform !== 'trendyol') {
       return NextResponse.json(
@@ -72,11 +81,25 @@ export async function PUT(
     }
 
     const cargoCompany = String(order.cargoCompany ?? '');
+    const dhlOrder =
+      isTrendyolDhlCargo(cargoCompany) ||
+      isTrendyolDhlCargo(String(order.trendyolMeta?.cargoProviderName ?? ''));
+    if (!dhlOrder && !String(body.providerCode ?? '').trim()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Bu sipariş DHL değil. DHL takip bildirimi yalnızca DHL kargo siparişlerinde kullanılır.',
+        },
+        { status: 400 }
+      );
+    }
+
     const providerCode =
       String(body.providerCode ?? '').trim() ||
-      (isTrendyolDhlCargo(cargoCompany) ? trendyolDhlProviderCode() : 'DHLMP');
+      (dhlOrder ? trendyolDhlProviderCode() : 'DHLMP');
 
-    const settings = await getTrendyolSettings();
+    const settings = await getTrendyolSettings(tenantId);
     await updateTrendyolShipmentTrackingDetails({
       sellerId: settings.sellerId,
       apiKey: settings.apiKey,

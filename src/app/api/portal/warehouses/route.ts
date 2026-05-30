@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Warehouse from '@/models/Warehouse';
 import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 import { ensureMainWarehouse } from '@/lib/warehouse-stock';
 
 export async function GET(request: Request) {
@@ -12,8 +13,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Müşteri oturumu gerekli.' }, { status: 401 });
     }
 
-    await ensureMainWarehouse();
-    const warehouses = await Warehouse.find({ active: { $ne: false } })
+    const { tenantId } = tenantScope(session);
+    await ensureMainWarehouse(tenantId);
+    const warehouses = await Warehouse.find({ tenantId, active: { $ne: false } })
       .sort({ isDefault: -1, name: 1 })
       .select('warehouseId name code isDefault')
       .lean();

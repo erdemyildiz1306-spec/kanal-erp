@@ -24,6 +24,7 @@ Vercel → Project → Settings → Environment Variables:
 | `AUTH_SESSION_SECRET` | Evet | Güçlü rastgele dize (min. 32 karakter) |
 | `STORE_WEBHOOK_SECRET` | Webhook varsa | Mağaza sipariş webhook doğrulama |
 | `NEXT_PUBLIC_APP_URL` | Önerilir | `https://erp-stok.vercel.app` |
+| `ROOT_ADMIN_EMAILS` | Root panel | Virgülle ayrılmış platform yönetici e-postaları (ör. `admin@example.com`) |
 | `RESEND_API_KEY` | E-posta varsa | Şifre sıfırlama e-postası |
 | `MAIL_FROM` | E-posta varsa | Gönderen adresi |
 

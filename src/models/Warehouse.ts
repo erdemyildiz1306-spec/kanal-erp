@@ -3,7 +3,8 @@ import mongoose from "mongoose";
 /** Tek fiziksel depo (varsayılan: `warehouseId` = main) */
 const WarehouseSchema = new mongoose.Schema(
   {
-    warehouseId: { type: String, required: true, unique: true, default: "main" },
+    tenantId: { type: String, default: "default", index: true },
+    warehouseId: { type: String, required: true, default: "main" },
     name: { type: String, required: true, default: "Ana Depo" },
     code: { type: String, default: "MAIN" },
     address: { type: String, default: "" },
@@ -13,5 +14,7 @@ const WarehouseSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+WarehouseSchema.index({ tenantId: 1, warehouseId: 1 }, { unique: true });
 
 export default mongoose.models.Warehouse || mongoose.model("Warehouse", WarehouseSchema);

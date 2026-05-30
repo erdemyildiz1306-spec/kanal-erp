@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       email: customer.email,
       name: customer.name,
       role: 'customer',
+      tenantId: String(customer.tenantId ?? 'default'),
     });
 
     const res = NextResponse.json({

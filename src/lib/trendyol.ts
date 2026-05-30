@@ -1,6 +1,6 @@
 import axios from 'axios';
 import connectToDatabase from './mongodb';
-import { resolveSingletonSettingDocument } from './erp-settings';
+import { resolveSettingDocument } from './erp-settings';
 import {
   parseCategoryAttributeFields,
   parseCategoryAttributeValueRows,
@@ -812,8 +812,8 @@ async function fetchTrendyolProductsLegacySapigw(
 }
 
 // Yardımcı fonksiyon: Veritabanından Trendyol ayarlarını çeker
-export async function getTrendyolSettings() {
-  const doc = await resolveSingletonSettingDocument();
+export async function getTrendyolSettings(tenantId?: string) {
+  const doc = await resolveSettingDocument(tenantId);
   const sid = String(doc.get('trendyolSellerId') ?? '').trim();
   const apiKey = String(doc.get('trendyolApiKey') ?? '').trim();
   const apiSecret = String(doc.get('trendyolApiSecret') ?? '').trim();
@@ -850,7 +850,7 @@ export async function resolveTrendyolBrandId(settings: Awaited<ReturnType<typeof
   }
 
   try {
-    const doc = await resolveSingletonSettingDocument();
+    const doc = await resolveSettingDocument();
     doc.set('trendyolBrandId', id);
     if (!String(doc.get('trendyolBrandName') ?? '').trim()) {
       doc.set('trendyolBrandName', name);
@@ -970,8 +970,8 @@ async function trendyolGetFirstOk(urls: string[], headers: Record<string, string
 }
 
 // Trendyol Kategori Ağacını Çeker
-export async function fetchTrendyolCategories() {
-  const settings = await getTrendyolSettings();
+export async function fetchTrendyolCategories(tenantId?: string) {
+  const settings = await getTrendyolSettings(tenantId);
   const headers = getTrendyolAuthHeader(
     settings.apiKey,
     settings.apiSecret,

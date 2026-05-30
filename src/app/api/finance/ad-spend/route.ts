@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import AdSpendEntry from '@/models/AdSpendEntry';
 import { requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 
 const FINANCE_ROLES = ['admin', 'operator', 'accountant'] as const;
 
@@ -11,7 +12,8 @@ export async function GET(request: Request) {
     if (session instanceof NextResponse) return session;
 
     await connectToDatabase();
-    const rows = await AdSpendEntry.find({})
+    const { tenantId } = tenantScope(session);
+    const rows = await AdSpendEntry.find({ tenantId })
       .sort({ spendDate: -1 })
       .limit(100)
       .lean();
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
     if (session instanceof NextResponse) return session;
 
     await connectToDatabase();
+    const { tenantId } = tenantScope(session);
     const body = await request.json();
     const amount = Number(body?.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -46,6 +49,7 @@ export async function POST(request: Request) {
     }
 
     const doc = await AdSpendEntry.create({
+      tenantId,
       spendDate,
       amount,
       platform: String(body?.platform ?? 'trendyol').trim() || 'trendyol',
@@ -67,19 +71,20 @@ export async function DELETE(request: Request) {
     if (session instanceof NextResponse) return session;
 
     await connectToDatabase();
+    const { tenantId } = tenantScope(session);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) {
       return NextResponse.json({ success: false, error: 'id gerekli' }, { status: 400 });
     }
-    const row = await AdSpendEntry.findById(id).lean();
+    const row = await AdSpendEntry.findOne({ _id: id, tenantId }).lean();
     if (!row || row.source !== 'manual') {
       return NextResponse.json(
         { success: false, error: 'Sadece manuel kayıtlar silinebilir' },
         { status: 400 }
       );
     }
-    await AdSpendEntry.deleteOne({ _id: id });
+    await AdSpendEntry.deleteOne({ _id: id, tenantId });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Silinemedi';

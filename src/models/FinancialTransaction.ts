@@ -3,7 +3,8 @@ import mongoose from 'mongoose';
 /** Trendyol settlements + otherfinancials kayıtları — GelirUP tarzı net kâr analizi */
 const FinancialTransactionSchema = new mongoose.Schema(
   {
-    trendyolId: { type: String, required: true, unique: true },
+    tenantId: { type: String, required: true, default: 'default', index: true },
+    trendyolId: { type: String, required: true },
     source: {
       type: String,
       enum: ['settlement', 'otherfinancial'],
@@ -27,8 +28,9 @@ const FinancialTransactionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+FinancialTransactionSchema.index({ tenantId: 1, trendyolId: 1 }, { unique: true });
 FinancialTransactionSchema.index({ transactionDate: -1, transactionType: 1 });
-FinancialTransactionSchema.index({ orderNumber: 1, transactionType: 1 });
+FinancialTransactionSchema.index({ tenantId: 1, orderNumber: 1, transactionType: 1 });
 
 export default mongoose.models.FinancialTransaction ||
   mongoose.model('FinancialTransaction', FinancialTransactionSchema);

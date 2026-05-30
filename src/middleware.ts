@@ -32,6 +32,22 @@ export async function middleware(request: NextRequest) {
 
   const isCustomer = session.role === 'customer';
 
+  const isRootPanelPath =
+    pathname === '/root' ||
+    pathname.startsWith('/root/') ||
+    (pathname.startsWith('/api/root/') &&
+      !pathname.startsWith('/api/root/exit-impersonate'));
+
+  if (isRootPanelPath && session.role !== 'root') {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { success: false, error: 'Platform yönetici (root) yetkisi gerekli.' },
+        { status: 403 }
+      );
+    }
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
   if (isCustomer) {
     const allowed =
       isPortalPath(pathname) ||

@@ -4,6 +4,7 @@ import {
   type FinanceRange,
 } from '@/lib/profit-analytics';
 import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 const RANGES: FinanceRange[] = ['7g', '30g', 'bu-ay', 'bu-yil'];
 
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
       ? (raw as FinanceRange)
       : '30g';
 
-    const data = await computeFinanceAnalytics(range);
+    const data = await computeFinanceAnalytics(range, tenantScope(session).tenantId);
     return NextResponse.json({ success: true, ...data });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Analiz hatası';

@@ -3,15 +3,15 @@ import bcrypt from 'bcryptjs';
 import connectToDatabase from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { getSessionFromRequest, requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
 
 export async function GET(request: Request) {
   await connectToDatabase();
   const session = getSessionFromRequest(request);
-  if (session instanceof Response) return session;
-  if (session?.role === 'customer') {
+  if (!session || session.role === 'customer') {
     return NextResponse.json({ success: false, error: 'Yetkisiz' }, { status: 403 });
   }
-  const customers = await Customer.find({}).sort({ name: 1 }).lean();
+  const customers = await Customer.find(tenantScope(session)).sort({ name: 1 }).lean();
   return NextResponse.json({ success: true, customers });
 }
 
@@ -21,6 +21,7 @@ export async function POST(request: Request) {
     const session = requireSession(request, ['admin', 'operator']);
     if (session instanceof Response) return session;
 
+    const { tenantId } = tenantScope(session);
     const data = await request.json();
     const email = String(data.email ?? '').toLowerCase().trim();
     const password = String(data.password ?? '').trim();
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const existing = await Customer.findOne({ email });
+    const existing = await Customer.findOne({ tenantId, email });
     if (existing) {
       return NextResponse.json(
         { success: false, error: 'Bu e-posta zaten kayıtlı.' },
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const customer = await Customer.create({
+      tenantId,
       email,
       name,
       companyName: String(data.companyName ?? ''),

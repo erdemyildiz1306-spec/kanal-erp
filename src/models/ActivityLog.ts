@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const ActivityLogSchema = new mongoose.Schema(
   {
+    tenantId: { type: String, default: 'default', index: true },
     action: { type: String, required: true },
     module: { type: String, default: 'system' },
     detail: { type: String, default: '' },
@@ -12,7 +13,7 @@ const ActivityLogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-ActivityLogSchema.index({ createdAt: -1 });
+ActivityLogSchema.index({ tenantId: 1, createdAt: -1 });
 
 export default mongoose.models.ActivityLog ||
   mongoose.model('ActivityLog', ActivityLogSchema);

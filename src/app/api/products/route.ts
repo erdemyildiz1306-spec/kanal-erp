@@ -2,18 +2,22 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
+import { getSessionFromRequest, requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 import { deleteProductsWithCleanup } from '@/lib/product-delete';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import {
   getEffectivePublicAppUrl,
   resolveTrendyolImageUrls,
 } from '@/lib/public-image-url';
 
 async function buildProductImagesPayload(
-  raw: unknown
+  raw: unknown,
+  tenantId?: string
 ): Promise<Array<{ url: string; sortOrder: number }>> {
   if (!Array.isArray(raw)) return [];
-  const settingsDoc = await resolveSingletonSettingDocument();
+  const settingsDoc = await resolveSettingDocument(tenantId);
   const base = getEffectivePublicAppUrl(String(settingsDoc.get('publicAppUrl') ?? ''));
   const out: Array<{ url: string; sortOrder: number }> = [];
   raw.forEach((img: { url?: string }, i: number) => {
@@ -71,7 +75,8 @@ type VariantIn = {
 async function skuBarcodeCollision(
   skus: string[],
   barcodes: string[],
-  excludeId?: string
+  excludeId?: string,
+  tenantId?: string
 ): Promise<{ field: string; value: string } | null> {
   const uniq = (a: string[]) => [...new Set(a.filter(Boolean))];
 
@@ -85,7 +90,7 @@ async function skuBarcodeCollision(
 
   if (or.length === 0) return null;
 
-  const q: Record<string, unknown> = { $or: or };
+  const q: Record<string, unknown> = mergeTenant(tenantId, { $or: or });
   if (excludeId) q._id = { $ne: new mongoose.Types.ObjectId(excludeId) };
 
   const hit = await Product.findOne(q).lean();
@@ -114,7 +119,11 @@ export async function GET(request: Request) {
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const limit = Math.min(Math.max(1, Number(searchParams.get('limit')) || 2000), 5000);
-    const products = await Product.find({}).sort({ createdAt: -1 }).limit(limit).lean();
+    const session = getSessionFromRequest(request);
+    const products = await Product.find(tenantScope(session))
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
     return NextResponse.json({ success: true, products, limit });
   } catch (error: unknown) {
     console.error('GET Products Error:', error);
@@ -125,6 +134,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof Response) return session;
+
+    const { tenantId } = tenantScope(session);
     await connectToDatabase();
     const data = await request.json();
 
@@ -136,7 +149,7 @@ export async function POST(request: Request) {
         )
       : [];
 
-    const imagesPayload = await buildProductImagesPayload(data.images);
+    const imagesPayload = await buildProductImagesPayload(data.images, tenantId);
 
     if (!data.name?.trim()) {
       return NextResponse.json(
@@ -183,7 +196,7 @@ export async function POST(request: Request) {
       const allSkus = [sku, ...variantsNormalized.map((v) => v.sku)];
       const allBc = [...variantsNormalized.map((v) => v.barcode), barcode];
 
-      const col = await skuBarcodeCollision(allSkus, allBc);
+      const col = await skuBarcodeCollision(allSkus, allBc, undefined, tenantId);
       if (col) {
         return NextResponse.json(
           {
@@ -199,7 +212,7 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-      const col = await skuBarcodeCollision([sku], [barcode]);
+      const col = await skuBarcodeCollision([sku], [barcode], undefined, tenantId);
       if (col) {
         return NextResponse.json(
           {
@@ -220,6 +233,7 @@ export async function POST(request: Request) {
       : [];
 
     const newProduct = new Product({
+      tenantId,
       name: data.name.trim(),
       description: String(data.description ?? '').trim(),
       sku,
@@ -289,6 +303,10 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof Response) return session;
+
+    const { tenantId } = tenantScope(session);
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -301,6 +319,9 @@ export async function PUT(request: Request) {
     const product = await Product.findById(id);
     if (!product) {
       return NextResponse.json({ error: 'Ürün bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, product.tenantId)) {
+      return NextResponse.json({ error: 'Bu ürüne erişim yetkiniz yok.' }, { status: 403 });
     }
 
     /** Sadece stok güncelleme — tekil ürünler için */
@@ -379,7 +400,7 @@ export async function PUT(request: Request) {
       colorLabel: String(v.colorLabel ?? '').trim(),
     }));
 
-    const imagesPayload = await buildProductImagesPayload(data.images);
+    const imagesPayload = await buildProductImagesPayload(data.images, tenantId);
 
     let sku = data.sku !== undefined ? String(data.sku).trim() : product.sku;
     let barcode =
@@ -410,7 +431,7 @@ export async function PUT(request: Request) {
 
       const allSkus = [sku, ...variantsNormalized.map((v) => v.sku)];
       const allBc = [...variantsNormalized.map((v) => v.barcode), barcode];
-      const col = await skuBarcodeCollision(allSkus, allBc, id);
+      const col = await skuBarcodeCollision(allSkus, allBc, id, tenantId);
       if (col) {
         return NextResponse.json(
           { error: `Çakışan kod: ${col.field} = ${col.value}` },
@@ -426,7 +447,7 @@ export async function PUT(request: Request) {
           },
           { status: 400 }
         );
-      const col = await skuBarcodeCollision([sku], [barcode], id);
+      const col = await skuBarcodeCollision([sku], [barcode], id, tenantId);
       if (col)
         return NextResponse.json(
           {
@@ -520,6 +541,9 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const session = requireSession(request, ['admin']);
+    if (session instanceof Response) return session;
+
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -528,7 +552,16 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Ürün ID belirtilmelidir.' }, { status: 400 });
     }
 
-    const result = await deleteProductsWithCleanup([id]);
+    const product = await Product.findById(id).select('tenantId').lean();
+    if (!product) {
+      return NextResponse.json({ error: 'Ürün bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, product.tenantId)) {
+      return NextResponse.json({ error: 'Bu ürüne erişim yetkiniz yok.' }, { status: 403 });
+    }
+
+    const { tenantId } = tenantScope(session);
+    const result = await deleteProductsWithCleanup([id], tenantId);
     if (result.deletedCount === 0) {
       return NextResponse.json({ error: 'Ürün bulunamadı.' }, { status: 404 });
     }

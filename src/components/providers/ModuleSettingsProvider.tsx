@@ -15,10 +15,17 @@ import {
   normalizeModulesEnabled,
   type ModulesEnabled,
 } from "@/lib/module-settings";
+import {
+  DEFAULT_INTEGRATION_MODULES,
+  normalizeIntegrationModules,
+  type IntegrationModulesEnabled,
+} from "@/lib/integration-modules";
 import type { NavItem } from "@/lib/navigation";
 
 type ModuleSettingsContextValue = {
   modules: ModulesEnabled;
+  integrationModules: IntegrationModulesEnabled;
+  trendyolAutoSyncIntervalMinutes: number;
   ready: boolean;
   refresh: () => Promise<void>;
   filterNav: <T extends NavItem>(items: T[]) => T[];
@@ -26,6 +33,8 @@ type ModuleSettingsContextValue = {
 
 const ModuleSettingsContext = createContext<ModuleSettingsContextValue>({
   modules: DEFAULT_MODULES_ENABLED,
+  integrationModules: DEFAULT_INTEGRATION_MODULES,
+  trendyolAutoSyncIntervalMinutes: 2,
   ready: false,
   refresh: async () => {},
   filterNav: (items) => items,
@@ -33,6 +42,9 @@ const ModuleSettingsContext = createContext<ModuleSettingsContextValue>({
 
 export function ModuleSettingsProvider({ children }: { children: ReactNode }) {
   const [modules, setModules] = useState<ModulesEnabled>(DEFAULT_MODULES_ENABLED);
+  const [integrationModules, setIntegrationModules] =
+    useState<IntegrationModulesEnabled>(DEFAULT_INTEGRATION_MODULES);
+  const [trendyolAutoSyncIntervalMinutes, setTrendyolAutoSyncIntervalMinutes] = useState(2);
   const [ready, setReady] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -40,7 +52,13 @@ export function ModuleSettingsProvider({ children }: { children: ReactNode }) {
       const res = await fetch("/api/settings?t=" + Date.now(), { cache: "no-store" });
       const data = await res.json();
       if (data.success && data.settings) {
-        setModules(normalizeModulesEnabled(data.settings.modulesEnabled));
+        const s = data.settings as Record<string, unknown>;
+        setModules(normalizeModulesEnabled(s.modulesEnabled));
+        setIntegrationModules(normalizeIntegrationModules(s.integrationModulesEnabled));
+        const interval = Number(s.trendyolAutoSyncIntervalMinutes);
+        setTrendyolAutoSyncIntervalMinutes(
+          Number.isFinite(interval) && interval >= 1 ? interval : 2
+        );
       }
     } catch {
       /* varsayılan modüller */
@@ -59,11 +77,13 @@ export function ModuleSettingsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ModuleSettingsContextValue>(
     () => ({
       modules,
+      integrationModules,
+      trendyolAutoSyncIntervalMinutes,
       ready,
       refresh,
       filterNav: (items) => filterNavByModules(items, modules),
     }),
-    [modules, ready, refresh]
+    [modules, integrationModules, trendyolAutoSyncIntervalMinutes, ready, refresh]
   );
 
   return (

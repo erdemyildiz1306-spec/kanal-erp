@@ -7,8 +7,10 @@ import {
   isTrendyolAutoSyncEnabled,
   shouldSkipTrendyolOrderPoll,
 } from '@/lib/trendyol-sync-guard';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import { formatTrendyolAxiosError, getTrendyolSettings } from '@/lib/trendyol';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { listActiveTenantIds } from '@/lib/tenant';
 
 function authorizeCron(request: Request): boolean {
   const secret = process.env.CRON_SECRET?.trim();
@@ -17,7 +19,7 @@ function authorizeCron(request: Request): boolean {
   return header === `Bearer ${secret}`;
 }
 
-/** Vercel Cron — sunucu tarafı Trendyol sipariş + finans senkronu */
+/** Vercel Cron — tüm aktif kuruluşlar için Trendyol sipariş + finans senkronu */
 export async function GET(request: Request) {
   if (!authorizeCron(request)) {
     return NextResponse.json({ success: false, error: 'Yetkisiz' }, { status: 401 });
@@ -25,63 +27,67 @@ export async function GET(request: Request) {
 
   try {
     await connectToDatabase();
+    const tenantIds = await listActiveTenantIds();
+    const results: Array<Record<string, unknown>> = [];
 
-    if (!(await isTrendyolAutoSyncEnabled())) {
-      return NextResponse.json({
-        success: true,
-        skipped: true,
-        reason: 'trendyolAutoSyncEnabled=false',
-      });
-    }
-
-    try {
-      await getTrendyolSettings();
-    } catch {
-      return NextResponse.json({
-        success: true,
-        skipped: true,
-        reason: 'Trendyol API ayarları eksik',
-      });
-    }
-
-    const doc = await resolveSingletonSettingDocument();
-    const intervalMin = await getTrendyolAutoSyncIntervalMinutes();
-    const lastRun = doc.get('trendyolLastAutoSyncAt') as Date | undefined;
-    if (lastRun) {
-      const elapsed = Date.now() - new Date(lastRun).getTime();
-      if (elapsed < intervalMin * 60_000 - 5000) {
-        return NextResponse.json({
-          success: true,
-          skipped: true,
-          reason: 'interval_not_elapsed',
-          intervalMinutes: intervalMin,
-        });
+    for (const tenantId of tenantIds) {
+      const mod = await assertIntegrationModuleEnabled('trendyolSeller', tenantId);
+      if (!mod.ok) {
+        results.push({ tenantId, skipped: true, reason: mod.error });
+        continue;
       }
-    }
 
-    if (await shouldSkipTrendyolOrderPoll()) {
-      return NextResponse.json({
-        success: true,
-        skipped: true,
-        reason: 'webhook_coalesce',
-      });
-    }
+      if (!(await isTrendyolAutoSyncEnabled(tenantId))) {
+        results.push({ tenantId, skipped: true, reason: 'trendyolAutoSyncEnabled=false' });
+        continue;
+      }
 
-    const orders = await runTrendyolOrderSync();
-    doc.set('trendyolLastAutoSyncAt', new Date());
-    await doc.save();
+      try {
+        await getTrendyolSettings(tenantId);
+      } catch {
+        results.push({ tenantId, skipped: true, reason: 'Trendyol API ayarları eksik' });
+        continue;
+      }
 
-    let finance: { upserted?: number } | null = null;
-    try {
-      finance = await syncTrendyolFinance({ daysBack: 7 });
-    } catch (e: unknown) {
-      console.warn('[Cron] Finans sync:', formatTrendyolAxiosError(e));
+      const doc = await resolveSettingDocument(tenantId);
+      const intervalMin = await getTrendyolAutoSyncIntervalMinutes(tenantId);
+      const lastRun = doc.get('trendyolLastAutoSyncAt') as Date | undefined;
+      if (lastRun) {
+        const elapsed = Date.now() - new Date(lastRun).getTime();
+        if (elapsed < intervalMin * 60_000 - 5000) {
+          results.push({
+            tenantId,
+            skipped: true,
+            reason: 'interval_not_elapsed',
+            intervalMinutes: intervalMin,
+          });
+          continue;
+        }
+      }
+
+      if (await shouldSkipTrendyolOrderPoll(tenantId)) {
+        results.push({ tenantId, skipped: true, reason: 'webhook_coalesce' });
+        continue;
+      }
+
+      const orders = await runTrendyolOrderSync({ tenantId });
+      doc.set('trendyolLastAutoSyncAt', new Date());
+      await doc.save();
+
+      let finance: { upserted?: number } | null = null;
+      try {
+        finance = await syncTrendyolFinance({ daysBack: 7, tenantId });
+      } catch (e: unknown) {
+        console.warn(`[Cron ${tenantId}] Finans sync:`, formatTrendyolAxiosError(e));
+      }
+
+      results.push({ tenantId, success: true, orders, finance });
     }
 
     return NextResponse.json({
       success: true,
-      orders,
-      finance,
+      tenants: results.length,
+      results,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Cron hatası';

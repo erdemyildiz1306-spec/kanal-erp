@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import {
   getEfaturamCustomerSession,
   efaturamGetApplicationStatus,
@@ -8,6 +8,9 @@ import {
 } from '@/lib/trendyol-efaturam';
 import { loadEfaturamSettingsFromDb } from '@/lib/trendyol-invoice-flow';
 import { requireInvoiceSession } from '@/lib/store-invoice-api';
+import connectToDatabase from '@/lib/mongodb';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { tenantScope } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +19,14 @@ export async function POST(request: Request) {
     const session = requireInvoiceSession(request);
     if (session instanceof NextResponse) return session;
 
-    const efaturam = await loadEfaturamSettingsFromDb();
+    await connectToDatabase();
+    const { tenantId } = tenantScope(session);
+    const mod = await assertIntegrationModuleEnabled('trendyolEfaturam', tenantId, session);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
+
+    const efaturam = await loadEfaturamSettingsFromDb(tenantId);
     if (!efaturam) {
       return NextResponse.json(
         { success: false, error: 'E-Faturam ayarları eksik veya devre dışı.' },
@@ -24,7 +34,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const doc = await resolveSingletonSettingDocument();
+    const doc = await resolveSettingDocument(tenantId);
     const companyTaxId = String(doc.get('companyTaxId') ?? '').trim();
     if (!companyTaxId) {
       return NextResponse.json(

@@ -1,7 +1,9 @@
 import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import Invoice from '@/models/Invoice';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
+import { normalizeTenantId } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 import { getTrendyolSettings, updateTrendyolPackageStatus } from '@/lib/trendyol';
 import {
   buildTrendyolInvoiceNumber,
@@ -23,6 +25,7 @@ import { StoreInvoiceError } from '@/lib/store-invoice-errors';
 
 export type OrderDoc = {
   _id: unknown;
+  tenantId?: string;
   orderNumber: string;
   platform: string;
   status: string;
@@ -43,8 +46,10 @@ export type OrderDoc = {
   storeInvoice?: Record<string, unknown>;
 };
 
-export async function loadEfaturamSettingsFromDb(): Promise<EfaturamSettings | null> {
-  const doc = await resolveSingletonSettingDocument();
+export async function loadEfaturamSettingsFromDb(
+  tenantId?: string
+): Promise<EfaturamSettings | null> {
+  const doc = await resolveSettingDocument(tenantId);
   const enabled = Boolean(doc.get('efaturamEnabled'));
   if (!enabled) return null;
   const partnerUsername = String(doc.get('efaturamPartnerUsername') ?? '').trim();
@@ -201,12 +206,13 @@ export async function issueTrendyolInvoiceForOrder(input: {
     );
   }
 
-  const settingsDoc = await resolveSingletonSettingDocument();
+  const tenantId = normalizeTenantId(order.tenantId);
+  const settingsDoc = await resolveSettingDocument(tenantId);
   const companyTaxId = String(settingsDoc.get('companyTaxId') ?? '').trim();
   const vatRate = Number(settingsDoc.get('financeVatRate') ?? 0.2);
   const vatPct = vatRate <= 1 ? vatRate * 100 : vatRate;
-  const tySettings = await getTrendyolSettings();
-  const efaturam = await loadEfaturamSettingsFromDb();
+  const tySettings = await getTrendyolSettings(tenantId);
+  const efaturam = await loadEfaturamSettingsFromDb(tenantId);
   const prefix = efaturam?.invoicePrefix || 'ERP';
   let invoiceNumber = String(input.invoiceNumber ?? order.trendyolInvoice?.invoiceNumber ?? '').trim();
   if (!invoiceNumber) {
@@ -415,10 +421,11 @@ export async function issueTrendyolInvoiceForOrder(input: {
   }
 }
 
-export async function listPendingTrendyolInvoices(limit = 100) {
+export async function listPendingTrendyolInvoices(limit = 100, tenantId?: string) {
   await connectToDatabase();
   const safeLimit = Math.min(Math.max(1, limit), 200);
   const orders = await Order.find({
+    ...mergeTenant(tenantId, {}),
     platform: 'trendyol',
     status: { $in: ['Hazırlanıyor', 'Kargolandı', 'Beklemede', 'Yeni'] },
     packageId: { $regex: /^\d+$/ },

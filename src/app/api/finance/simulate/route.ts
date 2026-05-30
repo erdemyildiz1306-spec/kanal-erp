@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import { simulateProfit } from '@/lib/profit-simulator';
 import { getFinanceDefaults } from '@/lib/finance-defaults';
 import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 export async function GET(request: Request) {
   try {
     const session = requireSession(request, ['admin', 'operator', 'accountant']);
     if (session instanceof NextResponse) return session;
 
-    const defaults = await getFinanceDefaults();
+    const defaults = await getFinanceDefaults(tenantScope(session).tenantId);
     return NextResponse.json({ success: true, defaults });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Varsayılanlar alınamadı';
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
     if (session instanceof NextResponse) return session;
 
     const body = (await request.json()) as Record<string, unknown>;
-    const defaults = await getFinanceDefaults();
+    const defaults = await getFinanceDefaults(tenantScope(session).tenantId);
 
     const result = simulateProfit({
       listPrice: Number(body.listPrice) || 0,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 import {
   getWarehouseStockMap,
   stockFromWarehouseMap,
@@ -17,6 +18,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Müşteri oturumu gerekli.' }, { status: 401 });
     }
 
+    const { tenantId } = tenantScope(session);
     const { searchParams } = new URL(request.url);
     const q = String(searchParams.get('q') ?? '').trim();
     const category = String(searchParams.get('category') ?? '').trim();
@@ -24,6 +26,7 @@ export async function GET(request: Request) {
     const warehouseId = String(searchParams.get('warehouseId') ?? MAIN_WAREHOUSE_ID);
 
     const filter: Record<string, unknown> = {
+      tenantId,
       active: { $ne: false },
       customerVisible: { $ne: false },
     };

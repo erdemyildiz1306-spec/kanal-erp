@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
+import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 function csvEscape(v: string | number): string {
   const s = String(v ?? '');
@@ -8,10 +10,14 @@ function csvEscape(v: string | number): string {
   return s;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = requireSession(request);
+    if (session instanceof NextResponse) return session;
+
     await connectToDatabase();
-    const products = await Product.find({}).sort({ name: 1 }).lean();
+    const { tenantId } = tenantScope(session);
+    const products = await Product.find({ tenantId }).sort({ name: 1 }).lean();
 
     const header = [
       'sku',

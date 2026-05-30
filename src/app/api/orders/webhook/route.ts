@@ -13,6 +13,8 @@ import {
 import { buildStoreMetaFromPayload } from '@/lib/store-order-meta';
 import { isDuplicateKeyError } from '@/lib/erp-invoice-number';
 import { checkRateLimit, clientIp } from '@/lib/rate-limit';
+import { resolveWebhookTenant } from '@/lib/store-api-auth';
+import { orderByNumber } from '@/lib/tenant-query';
 
 /** Trendyol veya özel web sitesinden gelen sipariş bildirimleri (Webhook). */
 export async function POST(request: Request) {
@@ -35,6 +37,7 @@ export async function POST(request: Request) {
 
     await connectToDatabase();
     const data = await request.json();
+    const tenantId = await resolveWebhookTenant(request, data as Record<string, unknown>);
 
     const platform =
       data.platform ||
@@ -53,7 +56,7 @@ export async function POST(request: Request) {
     }> = [];
 
     for (const item of data.items || []) {
-      const match = await findProductBySkuOrBarcode(item.sku, item.barcode);
+      const match = await findProductBySkuOrBarcode(item.sku, item.barcode, tenantId);
       const product = match?.product;
       const currentCost = product ? (product.costPrice ?? 0) : 0;
       calculatedCostAmount += currentCost * item.quantity;
@@ -77,7 +80,7 @@ export async function POST(request: Request) {
 
     const orderNumber = data.orderNumber || `ERP-${Date.now()}`;
 
-    const existing = await Order.findOne({ orderNumber });
+    const existing = await Order.findOne(orderByNumber(tenantId, orderNumber));
     if (existing) {
       if (!existing.stockApplied && (await orderHasStockDeductions(orderNumber))) {
         existing.stockApplied = true;
@@ -95,6 +98,7 @@ export async function POST(request: Request) {
     const storeMeta = !isTrendyol ? buildStoreMetaFromPayload(data as Record<string, unknown>) : null;
 
     const newOrder = new Order({
+      tenantId,
       orderNumber,
       platform,
       status: initialStatus,
@@ -117,7 +121,7 @@ export async function POST(request: Request) {
       await newOrder.save();
     } catch (saveError) {
       if (isDuplicateKeyError(saveError)) {
-        const dup = await Order.findOne({ orderNumber });
+        const dup = await Order.findOne(orderByNumber(tenantId, orderNumber));
         if (dup) {
           return NextResponse.json({
             success: true,
@@ -138,6 +142,7 @@ export async function POST(request: Request) {
           quantity: item.quantity,
           reason: 'webhook',
           reference: orderNumber,
+          tenantId,
         });
         if (updated && !touched.has(String(updated._id))) {
           touched.add(String(updated._id));

@@ -2,13 +2,18 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { generateEan13 } from '@/lib/codes';
-import { getSessionFromRequest } from '@/lib/auth';
+import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 import { logActivity } from '@/lib/activity-log';
 
 export async function POST(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof NextResponse) return session;
+
     await connectToDatabase();
-    const session = getSessionFromRequest(request);
+    const { tenantId } = tenantScope(session);
     const text = await request.text();
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) {
@@ -28,6 +33,7 @@ export async function POST(request: Request) {
       if (!sku) continue;
       try {
         const payload = {
+          tenantId,
           sku,
           name: name || sku,
           barcode: barcode || generateEan13(),
@@ -36,7 +42,7 @@ export async function POST(request: Request) {
           costPrice: Math.max(0, Number(costS?.replace(',', '.')) || 0),
           platforms: ['web', 'trendyol'],
         };
-        const existing = await Product.findOne({ sku });
+        const existing = await Product.findOne(mergeTenant(tenantId, { sku }));
         if (existing) {
           Object.assign(existing, payload);
           await existing.save();
@@ -54,8 +60,9 @@ export async function POST(request: Request) {
       action: 'product_import',
       module: 'products',
       detail: `${created} yeni, ${updated} güncellendi`,
-      userId: session?.userId,
-      userName: session?.name,
+      userId: session.userId,
+      userName: session.name,
+      tenantId,
     });
 
     return NextResponse.json({ success: true, created, updated, errors: errors.slice(0, 20) });

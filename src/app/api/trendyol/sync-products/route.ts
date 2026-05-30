@@ -10,6 +10,11 @@ import {
 } from '@/lib/trendyol';
 import { generateEan13 } from '@/lib/codes';
 import { isProductExcluded } from '@/lib/product-exclusion';
+import { parseTrendyolListingActive } from '@/lib/integration-modules';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 
 /** .env: 1, true, yes, on (büyük/küçük harf) */
 function parseEnvBool(v: string | undefined): boolean {
@@ -150,6 +155,8 @@ function coerceRow(item: Record<string, unknown>) {
   const sizeLabel = String(item.sizeLabel ?? '').trim();
   const colorLabel = String(item.colorLabel ?? '').trim();
 
+  const listingActive = parseTrendyolListingActive(item);
+
   return {
     stockCode,
     title,
@@ -165,6 +172,7 @@ function coerceRow(item: Record<string, unknown>) {
     contentId,
     sizeLabel,
     colorLabel,
+    listingActive,
   };
 }
 
@@ -202,9 +210,18 @@ function buildUpsertFilter(
   return or.length === 1 ? or[0]! : { $or: or };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof Response) return session;
+
+    const { tenantId } = tenantScope(session);
     await connectToDatabase();
+
+    const mod = await assertIntegrationModuleEnabled('trendyolSeller', tenantId);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
 
     const allowMock = parseEnvBool(process.env.TRENDYOL_ALLOW_SYNC_MOCK);
     /** Trendyol API’yi hiç çağırma; sadece örnek 2 ürün (API anahtarı gerekmez) */
@@ -220,7 +237,7 @@ export async function GET() {
       rows = [...MOCK_TRENDYOL_ROWS];
     } else {
       try {
-        settings = await getTrendyolSettings();
+        settings = await getTrendyolSettings(tenantId);
         rows = await fetchTrendyolProducts(
           settings.sellerId,
           settings.apiKey,
@@ -351,7 +368,7 @@ export async function GET() {
           }))
         : [];
 
-      const filter = buildUpsertFilter(first, parentSku);
+      const filter = mergeTenant(tenantId, buildUpsertFilter(first, parentSku));
 
       if (hasVariants) {
         variantProductCount++;
@@ -363,7 +380,10 @@ export async function GET() {
 
       const existingBefore = await Product.findOne(filter).select('_id').lean();
 
+      const listingActive = sorted.some((r) => r.listingActive !== false);
+
       const setDoc = {
+        tenantId,
         sku: parentSku,
         name: first.title,
         description: first.description || first.title,
@@ -390,7 +410,8 @@ export async function GET() {
             productId: first.contentId || first.id || '',
             productMainId: first.productMainId || '',
             approved: true,
-            syncActive: true,
+            listingActive,
+            syncActive: listingActive,
           },
           web: { syncActive: true },
         },
@@ -416,7 +437,7 @@ export async function GET() {
         if (isDup) {
           try {
             await Product.findOneAndUpdate(
-              { sku: parentSku },
+              mergeTenant(tenantId, { sku: parentSku }),
               { $set: setDoc },
               { new: true }
             );

@@ -7,17 +7,29 @@ import {
 } from '@/lib/trendyol';
 import { runTrendyolOrderSync } from '@/lib/trendyol-order-ingest';
 import { allowTrendyolOrderMock } from '@/lib/channel-sync';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof Response) return session;
+
+    const { tenantId } = tenantScope(session);
     await connectToDatabase();
+
+    const mod = await assertIntegrationModuleEnabled('trendyolSeller', tenantId);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
 
     let ordersList: Array<Record<string, unknown>> = [];
     let isMock = false;
     let apiError: string | null = null;
 
     try {
-      const settings = await getTrendyolSettings();
+      const settings = await getTrendyolSettings(tenantId);
       const res = (await fetchTrendyolOrders(
         settings.sellerId,
         settings.apiKey,
@@ -85,6 +97,7 @@ export async function GET() {
       preloadedOrders: ordersList,
       skipTerminal: isMock,
       skipClaims: isMock,
+      tenantId,
     });
 
     return NextResponse.json({

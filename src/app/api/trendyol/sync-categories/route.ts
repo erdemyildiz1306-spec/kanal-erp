@@ -2,13 +2,26 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Category from '@/models/Category';
 import { fetchTrendyolCategories, formatTrendyolAxiosError } from '@/lib/trendyol';
+import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
 
-export async function GET() {
+/** Trendyol kategori ağacını çeker — paylaşımlı global önbellek (TR pazar ağacı) */
+export async function GET(request: Request) {
   try {
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof NextResponse) return session;
+
+    const { tenantId } = tenantScope(session);
+    const mod = await assertIntegrationModuleEnabled('trendyolSeller', tenantId, session);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
+
     let categoriesTree: unknown[] = [];
 
     try {
-      const raw = await fetchTrendyolCategories();
+      const raw = await fetchTrendyolCategories(tenantId);
       if (Array.isArray(raw)) {
         categoriesTree = raw;
       } else if (raw && typeof raw === 'object') {

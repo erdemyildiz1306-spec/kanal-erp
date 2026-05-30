@@ -10,22 +10,29 @@ import {
   seedWarehouseFromProduct,
   MAIN_WAREHOUSE_ID,
 } from '@/lib/warehouse-stock';
-import { requireSession } from '@/lib/auth';
+import { requireSession, getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await connectToDatabase();
-    await ensureMainWarehouse();
+    const session = getSessionFromRequest(request);
+    const { tenantId } = tenantScope(session);
 
-    const mainCount = await WarehouseStock.countDocuments({ warehouseId: MAIN_WAREHOUSE_ID });
+    await ensureMainWarehouse(tenantId);
+
+    const mainCount = await WarehouseStock.countDocuments({
+      warehouseId: MAIN_WAREHOUSE_ID,
+    });
     if (mainCount === 0) {
-      const products = await Product.find({}).select('_id').lean();
+      const products = await Product.find({ tenantId }).select('_id').lean();
       for (const p of products) {
         await seedWarehouseFromProduct(MAIN_WAREHOUSE_ID, String(p._id));
       }
     }
 
-    const warehouses = await listWarehouses();
+    const warehouses = await listWarehouses(tenantId);
     const enriched = await Promise.all(
       warehouses.map(async (w) => {
         const summary = await getWarehouseStockSummary(String(w.warehouseId));
@@ -45,6 +52,7 @@ export async function POST(request: Request) {
     const session = requireSession(request, ['admin', 'operator']);
     if (session instanceof Response) return session;
 
+    const { tenantId } = tenantScope(session);
     const data = await request.json();
     const name = String(data.name ?? '').trim();
     if (!name) {
@@ -57,12 +65,13 @@ export async function POST(request: Request) {
       .replace(/\s+/g, '_');
     const warehouseId = code || `wh_${Date.now().toString(36)}`;
 
-    const exists = await Warehouse.findOne({ warehouseId });
+    const exists = await Warehouse.findOne(mergeTenant(tenantId, { warehouseId }));
     if (exists) {
       return NextResponse.json({ success: false, error: 'Depo kodu kullanımda.' }, { status: 409 });
     }
 
     const wh = await Warehouse.create({
+      tenantId,
       warehouseId,
       name,
       code: code || warehouseId.toUpperCase(),
@@ -72,7 +81,7 @@ export async function POST(request: Request) {
       active: true,
     });
 
-    const products = await Product.find({}).select('_id').lean();
+    const products = await Product.find({ tenantId }).select('_id').lean();
     for (const p of products) {
       await seedWarehouseFromProduct(warehouseId, String(p._id));
     }
@@ -91,14 +100,16 @@ export async function PUT(request: Request) {
     const session = requireSession(request, ['admin', 'operator']);
     if (session instanceof Response) return session;
 
+    const { tenantId } = tenantScope(session);
     const data = await request.json();
     const warehouseId = String(data.warehouseId ?? MAIN_WAREHOUSE_ID);
-    await ensureMainWarehouse();
+    await ensureMainWarehouse(tenantId);
 
     const wh = await Warehouse.findOneAndUpdate(
-      { warehouseId },
+      mergeTenant(tenantId, { warehouseId }),
       {
         $set: {
+          tenantId,
           name: data.name ?? 'Ana Depo',
           code: data.code ?? warehouseId.toUpperCase(),
           address: data.address ?? '',

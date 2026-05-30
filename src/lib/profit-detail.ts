@@ -9,6 +9,8 @@ import Product from '@/models/Product';
 import { netVatFromInclusive } from '@/lib/profit-vat';
 import { estimateOrderCargoFee, resolveProductDesi } from '@/lib/cargo-estimate';
 import { getFinanceDefaults } from '@/lib/finance-defaults';
+import { normalizeTenantId } from '@/lib/tenant';
+import { mergeTenant, orderByNumber } from '@/lib/tenant-query';
 
 export type OrderProfitRow = {
   orderNumber: string;
@@ -58,8 +60,14 @@ function saleCommission(row: {
   return Math.max(fromField, implied);
 }
 
-export async function buildOrderFinanceMap(since: Date, until: Date) {
+export async function buildOrderFinanceMap(
+  since: Date,
+  until: Date,
+  tenantId?: string
+) {
+  const tid = normalizeTenantId(tenantId);
   const sales = await FinancialTransaction.find({
+    tenantId: tid,
     source: 'settlement',
     transactionType: { $in: ['Sale', 'Satış'] },
     transactionDate: { $gte: since, $lte: until },
@@ -83,11 +91,13 @@ export async function buildOrderFinanceMap(since: Date, until: Date) {
   return byOrder;
 }
 
-export async function buildCargoByOrder(orderNumbers: string[]) {
+export async function buildCargoByOrder(orderNumbers: string[], tenantId?: string) {
   const byOrder = new Map<string, number>();
   if (!orderNumbers.length) return byOrder;
 
+  const tid = normalizeTenantId(tenantId);
   const charges = await CargoCharge.find({
+    tenantId: tid,
     orderNumber: { $in: orderNumbers },
   }).lean();
 
@@ -134,6 +144,7 @@ export async function computeDetailedProfits(input: {
   totalServiceFee: number;
   totalStopaj: number;
   totalAdSpend?: number;
+  tenantId?: string;
 }): Promise<{
   orderRows: OrderProfitRow[];
   productRows: ProductProfitRow[];
@@ -142,18 +153,20 @@ export async function computeDetailedProfits(input: {
   lossProducts: ProductProfitRow[];
   vat: { salesVat: number; costVat: number; netVat: number };
 }> {
-  const { since, until, totalServiceFee, totalStopaj } = input;
+  const { since, until, totalServiceFee, totalStopaj, tenantId } = input;
+  const scope = tenantId ? { tenantId: normalizeTenantId(tenantId) } : {};
 
   const orders = await Order.find({
+    ...scope,
     platform: 'trendyol',
     createdAt: { $gte: since, $lte: until },
     status: { $nin: ['İptal Edildi'] },
   }).lean();
 
-  const financeByOrder = await buildOrderFinanceMap(since, until);
+  const financeByOrder = await buildOrderFinanceMap(since, until, tenantId);
   const orderNumbers = orders.map((o) => o.orderNumber);
-  const cargoByOrder = await buildCargoByOrder(orderNumbers);
-  const financeDefaults = await getFinanceDefaults();
+  const cargoByOrder = await buildCargoByOrder(orderNumbers, tenantId);
+  const financeDefaults = await getFinanceDefaults(tenantId);
 
   const allBarcodes = new Set<string>();
   for (const o of orders) {
@@ -322,39 +335,36 @@ export async function computeDetailedProfits(input: {
   };
 }
 
-export async function syncOrderFinanceFields(since: Date): Promise<number> {
+export async function syncOrderFinanceFields(since: Date, tenantId?: string): Promise<number> {
   const until = new Date();
-  const financeByOrder = await buildOrderFinanceMap(since, until);
+  const tid = normalizeTenantId(tenantId);
+  const financeByOrder = await buildOrderFinanceMap(since, until, tid);
   const orderNumbers = [...financeByOrder.keys()];
-  const cargoByOrder = await buildCargoByOrder(orderNumbers);
+  const cargoByOrder = await buildCargoByOrder(orderNumbers, tenantId);
 
   let updated = 0;
   for (const [orderNumber, fin] of financeByOrder) {
-    const order = await Order.findOne({ orderNumber }).lean();
+    const order = await Order.findOne(mergeTenant(tid, { orderNumber })).lean();
     const cargo = cargoByOrder.get(orderNumber) ?? 0;
     const cost = Number(order?.costAmount) || 0;
     const netProfit = fin.sellerRevenue - cost - cargo;
-    await Order.updateOne(
-      { orderNumber },
-      {
-        $set: {
-          trendyolCommission: fin.commission,
-          trendyolSellerRevenue: fin.sellerRevenue,
-          trendyolCargoFee: cargo,
-          netProfitAmount: netProfit,
-          financeSyncedAt: new Date(),
-        },
-      }
-    );
+    await Order.updateOne(orderByNumber(tid, orderNumber), {
+      $set: {
+        trendyolCommission: fin.commission,
+        trendyolSellerRevenue: fin.sellerRevenue,
+        trendyolCargoFee: cargo,
+        netProfitAmount: netProfit,
+        financeSyncedAt: new Date(),
+      },
+    });
     updated++;
   }
 
   for (const [orderNumber, cargo] of cargoByOrder) {
     if (financeByOrder.has(orderNumber)) continue;
-    await Order.updateOne(
-      { orderNumber },
-      { $set: { trendyolCargoFee: cargo, financeSyncedAt: new Date() } }
-    );
+    await Order.updateOne(orderByNumber(tid, orderNumber), {
+      $set: { trendyolCargoFee: cargo, financeSyncedAt: new Date() },
+    });
     updated++;
   }
 

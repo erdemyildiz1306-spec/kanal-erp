@@ -12,16 +12,19 @@ export type TrendyolQuestion = {
   answer?: { text?: string; creationDate?: number };
 };
 
-export async function fetchTrendyolQuestions(opts?: {
-  status?: 'WAITING_FOR_ANSWER' | 'ANSWERED' | 'REJECTED' | 'REPORTED';
-  page?: number;
-  size?: number;
-}): Promise<{
+export async function fetchTrendyolQuestions(
+  tenantId?: string,
+  opts?: {
+    status?: 'WAITING_FOR_ANSWER' | 'ANSWERED' | 'REJECTED' | 'REPORTED';
+    page?: number;
+    size?: number;
+  }
+): Promise<{
   content: TrendyolQuestion[];
   totalElements: number;
   totalPages: number;
 }> {
-  const settings = await getTrendyolSettings();
+  const settings = await getTrendyolSettings(tenantId);
   const headers = getTrendyolAuthHeader(
     settings.apiKey,
     settings.apiSecret,
@@ -54,10 +57,11 @@ export async function fetchTrendyolQuestions(opts?: {
 }
 
 export async function answerTrendyolQuestion(
+  tenantId: string | undefined,
   questionId: number | string,
   text: string
 ): Promise<void> {
-  const settings = await getTrendyolSettings();
+  const settings = await getTrendyolSettings(tenantId);
   const headers = getTrendyolAuthHeader(
     settings.apiKey,
     settings.apiSecret,

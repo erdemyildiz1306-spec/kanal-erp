@@ -1,8 +1,10 @@
 import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
 import Invoice from '@/models/Invoice';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import { readStorePushSettings } from '@/lib/store-endpoint';
+import { normalizeTenantId } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 import { pushInvoiceToStore } from '@/lib/store-invoice';
 import {
   buildTrendyolInvoiceNumber,
@@ -153,13 +155,14 @@ export async function issueStoreInvoiceForOrder(input: {
     throw new StoreInvoiceError('Mağaza (web) siparişi bulunamadı.', 404);
   }
 
-  const settingsDoc = await resolveSingletonSettingDocument();
+  const tenantId = normalizeTenantId(order.tenantId);
+  const settingsDoc = await resolveSettingDocument(tenantId);
   const storeSettings = readStorePushSettings(settingsDoc);
   const token = String(settingsDoc.get('webApiToken') ?? '').trim();
   const companyTaxId = String(settingsDoc.get('companyTaxId') ?? '').trim();
   const vatRate = Number(settingsDoc.get('financeVatRate') ?? 0.2);
   const vatPct = vatRate <= 1 ? vatRate * 100 : vatRate;
-  const efaturam = await loadEfaturamSettingsFromDb();
+  const efaturam = await loadEfaturamSettingsFromDb(tenantId);
   const prefix = efaturam?.invoicePrefix || 'WEB';
 
   let invoiceNumber = String(
@@ -329,10 +332,11 @@ export async function issueStoreInvoiceForOrder(input: {
   }
 }
 
-export async function listPendingStoreInvoices(limit = 100) {
+export async function listPendingStoreInvoices(limit = 100, tenantId?: string) {
   await connectToDatabase();
   const safeLimit = Math.min(Math.max(1, limit), 200);
   const orders = await Order.find({
+    ...mergeTenant(tenantId, {}),
     platform: 'web',
     status: { $in: ['Yeni', 'Hazırlanıyor', 'Kargolandı', 'Beklemede'] },
     $or: [
@@ -371,7 +375,8 @@ export async function notifyStoreInvoiceOnly(input: {
     throw new StoreInvoiceError('Mağaza siparişi bulunamadı.', 404);
   }
 
-  const settingsDoc = await resolveSingletonSettingDocument();
+  const tenantId = normalizeTenantId(order.tenantId);
+  const settingsDoc = await resolveSettingDocument(tenantId);
   const storeSettings = readStorePushSettings(settingsDoc);
   const token = String(settingsDoc.get('webApiToken') ?? '').trim();
   const invoiceLink = assertHttpsInvoiceLink(String(input.invoiceLink ?? '').trim());

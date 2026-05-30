@@ -43,7 +43,9 @@ export async function GET(request: Request) {
         id: String(user._id),
         email: user.email,
         name: user.name,
-        role: user.role,
+        role: session.role,
+        tenantId: session.tenantId,
+        impersonatorId: session.impersonatorId ?? null,
       },
     });
   } catch (error: unknown) {

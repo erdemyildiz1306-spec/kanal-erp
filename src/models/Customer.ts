@@ -3,7 +3,8 @@ import mongoose from 'mongoose';
 /** Toptan / B2B müşteri — ayrı panel girişi */
 const CustomerSchema = new mongoose.Schema(
   {
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    tenantId: { type: String, default: 'default', index: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
     name: { type: String, required: true },
     companyName: { type: String, default: '' },
     phone: { type: String, default: '' },
@@ -15,5 +16,7 @@ const CustomerSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+CustomerSchema.index({ tenantId: 1, email: 1 }, { unique: true });
 
 export default mongoose.models.Customer || mongoose.model('Customer', CustomerSchema);

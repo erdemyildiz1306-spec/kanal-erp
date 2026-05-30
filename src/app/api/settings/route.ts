@@ -1,18 +1,24 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
+import Warehouse from '@/models/Warehouse';
+import { tenantScope } from '@/lib/tenant';
 import {
   getTrendyolSettings,
   parseTrendyolBrandId,
   resolveTrendyolBrandId,
 } from '@/lib/trendyol';
 import { randomBytes } from 'crypto';
-import { requireSession } from '@/lib/auth';
+import { requireSession, getSessionFromRequest } from '@/lib/auth';
 import {
   DEFAULT_PRODUCTION_APP_URL,
   getEffectivePublicAppUrl,
 } from '@/lib/public-image-url';
 import { OutboundUrlError, assertSafeOutboundHttpsUrl } from '@/lib/outbound-url';
+import {
+  normalizeIntegrationModules,
+  type IntegrationModuleKey,
+} from '@/lib/integration-modules';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,9 +47,10 @@ function buildIntegrationHints(doc: {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    let doc = await resolveSingletonSettingDocument();
+    const session = getSessionFromRequest(request);
+    let doc = await resolveSettingDocument(tenantScope(session).tenantId);
 
     let publicAppUrlStored = String(doc.get('publicAppUrl') ?? '').trim();
     if (!publicAppUrlStored && process.env.VERCEL) {
@@ -99,7 +106,7 @@ export async function PUT(request: Request) {
     const auth = requireSession(request, ['admin']);
     if (auth instanceof Response) return auth;
 
-    let doc = await resolveSingletonSettingDocument();
+    let doc = await resolveSettingDocument(tenantScope(auth).tenantId);
 
     const data = (await request.json()) as Record<string, unknown>;
     let webhookSecretGenerated: string | undefined;
@@ -122,6 +129,27 @@ export async function PUT(request: Request) {
     const incomingWebToken = toTrimmedString(data.webApiToken);
     if (incomingWebToken !== '') {
       doc.set('webApiToken', incomingWebToken);
+    }
+
+    const incomingWpToken = toTrimmedString((data as { wpApiToken?: string }).wpApiToken);
+    if (incomingWpToken !== '') {
+      doc.set('wpApiToken', incomingWpToken);
+    }
+
+    if ((data as { wpApiUrl?: string }).wpApiUrl !== undefined) {
+      const wpUrl = String((data as { wpApiUrl?: string }).wpApiUrl ?? '').trim();
+      if (wpUrl) {
+        try {
+          assertSafeOutboundHttpsUrl(wpUrl, 'WordPress API adresi');
+          doc.set('wpApiUrl', wpUrl);
+        } catch (error) {
+          const message =
+            error instanceof OutboundUrlError ? error.message : 'Geçersiz WordPress API adresi.';
+          return NextResponse.json({ error: message }, { status: 400 });
+        }
+      } else {
+        doc.set('wpApiUrl', '');
+      }
     }
 
     if (data.webApiUrl !== undefined) {
@@ -186,6 +214,24 @@ export async function PUT(request: Request) {
     }
     if (data.printPackageContents !== undefined) {
       doc.set('printPackageContents', Boolean(data.printPackageContents));
+    }
+    if (data.integrationModulesEnabled !== undefined && data.integrationModulesEnabled !== null) {
+      const normalized = normalizeIntegrationModules(data.integrationModulesEnabled);
+      for (const key of Object.keys(normalized) as IntegrationModuleKey[]) {
+        doc.set(`integrationModulesEnabled.${key}`, normalized[key]);
+      }
+      doc.set('efaturamEnabled', normalized.trendyolEfaturam);
+    }
+    if (data.trendyolDefaultWarehouseId !== undefined) {
+      const wh = String(data.trendyolDefaultWarehouseId ?? '').trim() || 'main';
+      const whDoc = await Warehouse.findOne({ warehouseId: wh }).lean();
+      if (!whDoc) {
+        return NextResponse.json(
+          { error: `Depo bulunamadı: "${wh}". Önce Depo sayfasından oluşturun.` },
+          { status: 400 }
+        );
+      }
+      doc.set('trendyolDefaultWarehouseId', wh);
     }
     if (data.modulesEnabled !== undefined && data.modulesEnabled !== null) {
       const raw = data.modulesEnabled as Record<string, unknown>;
@@ -254,7 +300,13 @@ export async function PUT(request: Request) {
     }
     if (data.trendyolStockDeductAt !== undefined) {
       const v = String(data.trendyolStockDeductAt ?? 'processing').trim();
-      doc.set('trendyolStockDeductAt', v || 'processing');
+      if (!['pending', 'processing', 'shipped'].includes(v)) {
+        return NextResponse.json(
+          { error: 'trendyolStockDeductAt: pending, processing veya shipped olmalı.' },
+          { status: 400 }
+        );
+      }
+      doc.set('trendyolStockDeductAt', v);
     }
     if (data.trendyolAutoSyncEnabled !== undefined) {
       doc.set('trendyolAutoSyncEnabled', Boolean(data.trendyolAutoSyncEnabled));
@@ -336,7 +388,9 @@ export async function PUT(request: Request) {
     }
 
     if (data.efaturamEnabled !== undefined) {
-      doc.set('efaturamEnabled', Boolean(data.efaturamEnabled));
+      const enabled = Boolean(data.efaturamEnabled);
+      doc.set('efaturamEnabled', enabled);
+      doc.set('integrationModulesEnabled.trendyolEfaturam', enabled);
     }
     if (data.efaturamUseStage !== undefined) {
       doc.set('efaturamUseStage', Boolean(data.efaturamUseStage));
@@ -411,7 +465,7 @@ export async function PUT(request: Request) {
       }
     }
 
-    doc = await resolveSingletonSettingDocument();
+    doc = await resolveSettingDocument(tenantScope(auth).tenantId);
     const integrationHints = buildIntegrationHints(doc);
     const savedBrandId = parseTrendyolBrandId(doc.get('trendyolBrandId'));
     const savedBrandName = toTrimmedString(doc.get('trendyolBrandName'));
@@ -437,6 +491,7 @@ export async function PUT(request: Request) {
           String(doc.get('publicAppUrl') ?? '').trim() ||
           getEffectivePublicAppUrl(''),
         webApiUrl: String(doc.get('webApiUrl') ?? '').trim(),
+        wpApiUrl: String(doc.get('wpApiUrl') ?? '').trim(),
         webApiStockPath: String(doc.get('webApiStockPath') ?? 'stock-price').trim(),
         webApiPushUrl: String(doc.get('webApiPushUrl') ?? '').trim(),
         webApiInvoicePath: String(doc.get('webApiInvoicePath') ?? 'orders/invoice').trim(),

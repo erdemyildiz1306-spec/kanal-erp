@@ -4,16 +4,18 @@ import Invoice from '@/models/Invoice';
 import { calculateInvoiceTotals } from '@/lib/invoice-math';
 import { createErpInvoiceWithRetry } from '@/lib/erp-invoice-number';
 import { requireSession } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 export async function GET(request: Request) {
   try {
     const session = requireSession(request, ['admin', 'operator', 'accountant']);
     if (session instanceof Response) return session;
 
+    const scope = tenantScope(session);
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
-    const q: Record<string, string> = {};
+    const q: Record<string, string> = { ...scope };
     if (status && status !== 'Tümü') q.status = status;
 
     const limit = Math.min(Math.max(1, Number(searchParams.get('limit')) || 500), 2000);
@@ -46,6 +48,7 @@ export async function POST(request: Request) {
     );
 
     const payload = {
+      tenantId: tenantScope(session).tenantId,
       orderRef: data.orderRef || '',
       status: data.status || 'Taslak',
       customerName: data.customerName || '',

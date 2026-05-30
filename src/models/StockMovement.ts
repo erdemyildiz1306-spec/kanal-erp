@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const StockMovementSchema = new mongoose.Schema(
   {
+    tenantId: { type: String, required: true, default: 'default', index: true },
     productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
     sku: { type: String, default: '' },
     barcode: { type: String, default: '' },
@@ -30,6 +31,7 @@ const StockMovementSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+StockMovementSchema.index({ tenantId: 1, createdAt: -1 });
 StockMovementSchema.index({ createdAt: -1 });
 StockMovementSchema.index({ productId: 1, createdAt: -1 });
 StockMovementSchema.index({ reference: 1, barcode: 1 });

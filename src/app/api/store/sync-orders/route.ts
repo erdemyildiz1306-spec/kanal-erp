@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Order from '@/models/Order';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import { resolveStoreSyncEndpoint } from '@/lib/store-endpoint';
 import { OutboundUrlError } from '@/lib/outbound-url';
 import { requireSession } from '@/lib/auth';
 import { findProductBySkuOrBarcode } from '@/lib/inventory';
 import { buildStoreMetaFromPayload } from '@/lib/store-order-meta';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { tenantScope } from '@/lib/tenant';
+import { orderByNumber } from '@/lib/tenant-query';
 
 /** Mağaza API'sinden sipariş çeker — GET {webApiUrl}/orders */
 export async function GET(request: Request) {
@@ -14,8 +17,15 @@ export async function GET(request: Request) {
     const session = requireSession(request, ['admin', 'operator']);
     if (session instanceof Response) return session;
 
+    const { tenantId } = tenantScope(session);
     await connectToDatabase();
-    const doc = await resolveSingletonSettingDocument();
+
+    const mod = await assertIntegrationModuleEnabled('webStoreApi', tenantId);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
+
+    const doc = await resolveSettingDocument(tenantId);
     const baseUrl = String(doc.get('webApiUrl') ?? '').trim();
     const token = String(doc.get('webApiToken') ?? '').trim();
 
@@ -80,7 +90,7 @@ export async function GET(request: Request) {
       for (const item of itemsIn as Array<Record<string, unknown>>) {
         const sku = String(item.sku ?? '');
         const barcode = String(item.barcode ?? '');
-        const match = await findProductBySkuOrBarcode(sku, barcode);
+        const match = await findProductBySkuOrBarcode(sku, barcode, tenantId);
         const product = match?.product as { costPrice?: number; name?: string } | undefined;
         const qty = Number(item.quantity) || 1;
         const unitPrice = Number(item.unitPrice ?? item.price) || 0;
@@ -104,9 +114,10 @@ export async function GET(request: Request) {
       const storeMeta = buildStoreMetaFromPayload(row);
 
       await Order.findOneAndUpdate(
-        { orderNumber },
+        orderByNumber(tenantId, orderNumber),
         {
           $set: {
+            tenantId,
             platform: 'web',
             status: String(row.status ?? 'Yeni'),
             customerName: String(row.customerName ?? 'Web Müşterisi'),
@@ -127,10 +138,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       count: synced,
-      message: synced
-        ? `Mağazadan ${synced} sipariş aktarıldı.`
-        : 'Mağazadan sipariş gelmedi.',
-      endpoint,
+      message: `${synced} mağaza siparişi ERP'ye aktarıldı.`,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Sunucu hatası';

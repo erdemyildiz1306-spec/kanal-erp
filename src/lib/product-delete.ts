@@ -3,6 +3,7 @@ import Product from '@/models/Product';
 import ProductLink from '@/models/ProductLink';
 import WarehouseStock from '@/models/WarehouseStock';
 import { registerProductExclusion } from '@/lib/product-exclusion';
+import { normalizeTenantId } from '@/lib/tenant';
 
 type ProductDoc = {
   _id: unknown;
@@ -67,7 +68,10 @@ function collectExclusionKeys(product: ProductDoc): Array<{
 }
 
 /** Silinen ürünlerin depo stok, link ve kanal tekrar içe aktarım kayıtlarını temizle */
-export async function deleteProductsWithCleanup(ids: string[]): Promise<{
+export async function deleteProductsWithCleanup(
+  ids: string[],
+  tenantId?: string
+): Promise<{
   deletedCount: number;
   exclusionsRegistered: number;
   warehouseRowsRemoved: number;
@@ -115,12 +119,15 @@ export async function deleteProductsWithCleanup(ids: string[]): Promise<{
 
   const whResult = await WarehouseStock.deleteMany({ productId: { $in: objectIds } });
 
-  const linkResult = await ProductLink.deleteMany({
+  const tid = normalizeTenantId(tenantId);
+  const linkFilter: Record<string, unknown> = {
+    tenantId: tid,
     $or: [
       { productId: { $in: objectIds } },
       ...(keysArr.length ? [{ matchKey: { $in: keysArr } }] : []),
     ],
-  });
+  };
+  const linkResult = await ProductLink.deleteMany(linkFilter);
 
   const deleteResult = await Product.deleteMany({ _id: { $in: objectIds } });
 

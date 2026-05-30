@@ -6,6 +6,8 @@ import Header from "@/components/layout/Header";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import MobileMoreSheet from "@/components/layout/MobileMoreSheet";
 import FcmBootstrap from "@/components/layout/FcmBootstrap";
+import NativeShellEnhancements from "@/components/layout/NativeShellEnhancements";
+import ImpersonationBanner from "@/components/root/ImpersonationBanner";
 import { ModuleSettingsProvider } from "@/components/providers/ModuleSettingsProvider";
 
 export default function ErpShell({ children }: { children: React.ReactNode }) {
@@ -31,12 +33,14 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ModuleSettingsProvider>
+    <NativeShellEnhancements />
     <div className="flex h-[100dvh] overflow-hidden print:min-h-screen print:h-auto print:overflow-visible">
       <aside className="print:hidden hidden lg:flex h-full w-16 xl:w-52 shrink-0">
         <Sidebar />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <ImpersonationBanner />
         <div className="print:hidden shrink-0 sticky top-0 z-40">
           <Header />
         </div>

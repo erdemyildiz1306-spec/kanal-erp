@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
-import { resolveSingletonSettingDocument } from '@/lib/erp-settings';
+import { resolveSettingDocument } from '@/lib/erp-settings';
 import { resolveStoreSyncEndpoint } from '@/lib/store-endpoint';
 import { OutboundUrlError } from '@/lib/outbound-url';
 import { requireSession } from '@/lib/auth';
 import { generateEan13 } from '@/lib/codes';
 import { isProductExcluded } from '@/lib/product-exclusion';
+import { assertIntegrationModuleEnabled } from '@/lib/integration-modules-server';
+import { tenantScope } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 
 /** Mağaza API'sinden ürün çeker — GET {webApiUrl}/products beklenir */
 export async function GET(request: Request) {
@@ -14,8 +17,15 @@ export async function GET(request: Request) {
     const session = requireSession(request, ['admin', 'operator']);
     if (session instanceof Response) return session;
 
+    const { tenantId } = tenantScope(session);
     await connectToDatabase();
-    const doc = await resolveSingletonSettingDocument();
+
+    const mod = await assertIntegrationModuleEnabled('webStoreApi', tenantId);
+    if (!mod.ok) {
+      return NextResponse.json({ success: false, error: mod.error }, { status: 403 });
+    }
+
+    const doc = await resolveSettingDocument(tenantId);
     const baseUrl = String(doc.get('webApiUrl') ?? '').trim();
     const token = String(doc.get('webApiToken') ?? '').trim();
 
@@ -110,9 +120,10 @@ export async function GET(request: Request) {
       const stock = Math.max(0, Math.floor(Number(row.stock ?? row.quantity ?? 0) || 0));
 
       await Product.findOneAndUpdate(
-        { sku },
+        mergeTenant(tenantId, { sku }),
         {
           $set: {
+            tenantId,
             sku,
             name,
             description: String(row.description ?? name),

@@ -3,10 +3,15 @@ import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import Order from '@/models/Order';
 import { buildTurkishSearchRegex, normalizeSearchQuery } from '@/lib/search-text';
+import { getSessionFromRequest } from '@/lib/auth';
+import { tenantScope } from '@/lib/tenant';
 
 export async function GET(request: Request) {
   try {
     await connectToDatabase();
+    const session = getSessionFromRequest(request);
+    const scope = tenantScope(session);
+
     const { searchParams } = new URL(request.url);
     const q = normalizeSearchQuery(String(searchParams.get('q') ?? ''));
     if (q.length < 2) {
@@ -17,6 +22,7 @@ export async function GET(request: Request) {
 
     const [products, orders] = await Promise.all([
       Product.find({
+        ...scope,
         $or: [
           { name: regex },
           { sku: regex },
@@ -33,6 +39,7 @@ export async function GET(request: Request) {
         .limit(10)
         .lean(),
       Order.find({
+        ...scope,
         $or: [
           { orderNumber: regex },
           { customerName: regex },

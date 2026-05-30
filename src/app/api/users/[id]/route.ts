@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import connectToDatabase from '@/lib/mongodb';
 import User from '@/models/User';
 import { requireSession } from '@/lib/auth';
+import { belongsToTenant } from '@/lib/tenant';
 
 const ALLOWED_ROLES = ['admin', 'operator', 'accountant'] as const;
 
@@ -32,6 +33,12 @@ export async function PATCH(
     if (!user) {
       return NextResponse.json({ success: false, error: 'Kullanıcı bulunamadı.' }, { status: 404 });
     }
+    if (!belongsToTenant(session, user.tenantId)) {
+      return NextResponse.json(
+        { success: false, error: 'Bu kullanıcıya erişim yetkiniz yok.' },
+        { status: 403 }
+      );
+    }
 
     if (data.name !== undefined) user.name = String(data.name ?? '').trim();
     if (data.email !== undefined) {
@@ -39,7 +46,7 @@ export async function PATCH(
       if (!email) {
         return NextResponse.json({ success: false, error: 'E-posta boş olamaz.' }, { status: 400 });
       }
-      const dup = await User.findOne({ email, _id: { $ne: user._id } });
+      const dup = await User.findOne({ email, tenantId: user.tenantId, _id: { $ne: user._id } });
       if (dup) {
         return NextResponse.json({ success: false, error: 'Bu e-posta kullanımda.' }, { status: 409 });
       }
@@ -105,6 +112,12 @@ export async function DELETE(
     const user = await User.findById(id);
     if (!user) {
       return NextResponse.json({ success: false, error: 'Kullanıcı bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, user.tenantId)) {
+      return NextResponse.json(
+        { success: false, error: 'Bu kullanıcıya erişim yetkiniz yok.' },
+        { status: 403 }
+      );
     }
     user.active = false;
     await user.save();

@@ -10,6 +10,17 @@ import {
   MAIN_WAREHOUSE_ID,
   matchVariantSkuFromOrderLine,
 } from '@/lib/warehouse-stock';
+import { mergeTenant, readProductTenantId } from '@/lib/tenant-query';
+import { normalizeTenantId } from '@/lib/tenant';
+
+function productMatchesTenant(
+  product: { tenantId?: string } | null | undefined,
+  tenantId?: string
+): boolean {
+  if (!product) return false;
+  if (!tenantId) return true;
+  return normalizeTenantId(product.tenantId) === normalizeTenantId(tenantId);
+}
 
 export type ProductMatch = {
   product: mongoose.Document & {
@@ -36,11 +47,13 @@ export type ProductMatch = {
 
 export async function findProductBySkuOrBarcode(
   sku?: string,
-  barcode?: string
+  barcode?: string,
+  tenantId?: string
 ): Promise<ProductMatch | null> {
   const s = String(sku ?? '').trim();
   const b = String(barcode ?? '').trim();
   const barcodeKeys = b ? barcodeLookupKeys(b) : [];
+  const pf = (q: Record<string, unknown>) => mergeTenant(tenantId, q);
 
   const matchVariantBarcode = (
     product: ProductMatch['product'],
@@ -56,10 +69,12 @@ export async function findProductBySkuOrBarcode(
 
   if (barcodeKeys.length > 0) {
     for (const key of barcodeKeys) {
-      const link = await ProductLink.findOne({ matchType: 'barcode', matchKey: key }).lean();
+      const link = await ProductLink.findOne(
+        pf({ matchType: 'barcode', matchKey: key })
+      ).lean();
       if (link?.productId) {
         const linked = await Product.findById(link.productId);
-        if (linked) {
+        if (linked && productMatchesTenant(linked as { tenantId?: string }, tenantId)) {
           const idx = matchVariantBarcode(linked as ProductMatch['product'], barcodeKeys);
           const variants = linked.variants ?? [];
           return {
@@ -75,7 +90,9 @@ export async function findProductBySkuOrBarcode(
       }
     }
 
-    const byVariant = await Product.findOne({ 'variants.barcode': { $in: barcodeKeys } });
+    const byVariant = await Product.findOne(
+      pf({ 'variants.barcode': { $in: barcodeKeys } })
+    );
     if (byVariant) {
       const idx = matchVariantBarcode(byVariant as ProductMatch['product'], barcodeKeys);
       const variants = byVariant.variants ?? [];
@@ -89,7 +106,7 @@ export async function findProductBySkuOrBarcode(
       };
     }
 
-    const byParent = await Product.findOne({ barcode: { $in: barcodeKeys } });
+    const byParent = await Product.findOne(pf({ barcode: { $in: barcodeKeys } }));
     if (byParent) {
       if (byParent.hasVariants && byParent.variants?.length) {
         const idx = matchVariantBarcode(byParent as ProductMatch['product'], barcodeKeys);
@@ -114,7 +131,7 @@ export async function findProductBySkuOrBarcode(
     const whRow = await WarehouseStock.findOne({ barcode: { $in: barcodeKeys } }).lean();
     if (whRow?.productId) {
       const fromWarehouse = await Product.findById(whRow.productId);
-      if (fromWarehouse) {
+      if (fromWarehouse && productMatchesTenant(fromWarehouse as { tenantId?: string }, tenantId)) {
         const idx = matchVariantBarcode(fromWarehouse as ProductMatch['product'], barcodeKeys);
         const variants = fromWarehouse.variants ?? [];
         const variantSku = String(whRow.variantSku ?? '').trim();
@@ -140,10 +157,10 @@ export async function findProductBySkuOrBarcode(
   }
 
   if (s) {
-    const link = await ProductLink.findOne({ matchType: 'sku', matchKey: s }).lean();
+    const link = await ProductLink.findOne(pf({ matchType: 'sku', matchKey: s })).lean();
     if (link?.productId) {
       const linked = await Product.findById(link.productId);
-      if (linked) {
+      if (linked && productMatchesTenant(linked as { tenantId?: string }, tenantId)) {
         const variants = linked.variants ?? [];
         const idx = variants.findIndex(
           (v: { sku?: string }) => String(v.sku ?? '').trim() === s
@@ -160,7 +177,7 @@ export async function findProductBySkuOrBarcode(
       }
     }
 
-    const byVariantSku = await Product.findOne({ 'variants.sku': s });
+    const byVariantSku = await Product.findOne(pf({ 'variants.sku': s }));
     if (byVariantSku) {
       const variants = byVariantSku.variants ?? [];
       const idx = variants.findIndex((v: { sku?: string }) => String(v.sku ?? '').trim() === s);
@@ -173,7 +190,7 @@ export async function findProductBySkuOrBarcode(
       };
     }
 
-    const bySku = await Product.findOne({ sku: s });
+    const bySku = await Product.findOne(pf({ sku: s }));
     if (bySku) {
       return {
         product: bySku as ProductMatch['product'],
@@ -188,29 +205,32 @@ export async function findProductBySkuOrBarcode(
 }
 
 /** Barkod okuyucu — tüm eşleştirme yollarını sırayla dener */
-export async function findProductByScannedCode(raw: string): Promise<ProductMatch | null> {
+export async function findProductByScannedCode(
+  raw: string,
+  tenantId?: string
+): Promise<ProductMatch | null> {
   const code = String(raw ?? '').trim();
   if (!code) return null;
 
   const normalized = code.replace(/\s+/g, '');
 
-  let match = await findProductBySkuOrBarcode(undefined, normalized);
+  let match = await findProductBySkuOrBarcode(undefined, normalized, tenantId);
   if (match) return match;
 
-  match = await findProductBySkuOrBarcode(normalized, undefined);
+  match = await findProductBySkuOrBarcode(normalized, undefined, tenantId);
   if (match) return match;
 
-  match = await findProductBySkuOrBarcode(normalized, normalized);
+  match = await findProductBySkuOrBarcode(normalized, normalized, tenantId);
   if (match) return match;
 
-  match = await findProductLoose(normalized);
+  match = await findProductLoose(normalized, tenantId);
   if (match) return match;
 
   const digits = normalized.replace(/\D/g, '');
   if (digits && digits !== normalized) {
-    match = await findProductBySkuOrBarcode(undefined, digits);
+    match = await findProductBySkuOrBarcode(undefined, digits, tenantId);
     if (match) return match;
-    match = await findProductLoose(digits);
+    match = await findProductLoose(digits, tenantId);
     if (match) return match;
   }
 
@@ -218,7 +238,7 @@ export async function findProductByScannedCode(raw: string): Promise<ProductMatc
     for (const len of [13, 12, 8]) {
       if (digits.length >= len) {
         const tail = digits.slice(-len);
-        match = await findProductLoose(tail);
+        match = await findProductLoose(tail, tenantId);
         if (match) return match;
       }
     }
@@ -228,10 +248,14 @@ export async function findProductByScannedCode(raw: string): Promise<ProductMatc
 }
 
 /** Barkod/SKU eşleşmesi — gevşek arama (rakam varyasyonları). */
-export async function findProductLoose(raw: string): Promise<ProductMatch | null> {
+export async function findProductLoose(
+  raw: string,
+  tenantId?: string
+): Promise<ProductMatch | null> {
   const code = String(raw ?? '').trim();
   if (!code) return null;
 
+  const pf = (q: Record<string, unknown>) => mergeTenant(tenantId, q);
   const keys = barcodeLookupKeys(code);
   const or: Record<string, unknown>[] = [];
 
@@ -254,7 +278,7 @@ export async function findProductLoose(raw: string): Promise<ProductMatch | null
 
   if (or.length === 0) return null;
 
-  const hit = await Product.findOne({ $or: or });
+  const hit = await Product.findOne(pf({ $or: or }));
   if (!hit) return null;
 
   const variants = hit.variants ?? [];
@@ -371,6 +395,7 @@ export function resolveVariantMatch(
 }
 
 export async function recordStockMovement(input: {
+  tenantId?: string;
   productId: unknown;
   sku: string;
   barcode?: string;
@@ -384,6 +409,7 @@ export async function recordStockMovement(input: {
   note?: string;
 }) {
   await StockMovement.create({
+    tenantId: normalizeTenantId(input.tenantId),
     productId: input.productId,
     sku: input.sku,
     barcode: input.barcode ?? '',
@@ -454,6 +480,7 @@ export async function adjustProductStock(input: {
   }
 
   await recordStockMovement({
+    tenantId: readProductTenantId(product),
     productId: product._id,
     sku: variantSku || String(product.sku ?? match.matchedSku),
     barcode: variantBarcode || String(product.barcode ?? match.matchedBarcode),
@@ -487,6 +514,7 @@ export async function orderLineStockAlreadyApplied(input: {
   sku?: string;
   barcode?: string;
   productName?: string;
+  tenantId?: string;
 }): Promise<boolean> {
   const ref = String(input.reference ?? '').trim();
   if (!ref) return false;
@@ -511,7 +539,7 @@ export async function orderLineStockAlreadyApplied(input: {
   });
   if (hit) return true;
 
-  const raw = await findProductBySkuOrBarcode(s, b);
+  const raw = await findProductBySkuOrBarcode(s, b, input.tenantId);
   if (!raw) return false;
   const resolved = resolveVariantMatch(raw, s, b, input.productName);
   if (resolved.variantIndex < 0) return false;
@@ -534,6 +562,7 @@ export async function orderLineStockAlreadyRestored(input: {
   sku?: string;
   barcode?: string;
   productName?: string;
+  tenantId?: string;
 }): Promise<boolean> {
   const ref = String(input.reference ?? '').trim();
   if (!ref) return false;
@@ -559,7 +588,7 @@ export async function orderLineStockAlreadyRestored(input: {
   });
   if (hit) return true;
 
-  const raw = await findProductBySkuOrBarcode(s, b);
+  const raw = await findProductBySkuOrBarcode(s, b, input.tenantId);
   if (!raw) return false;
   const resolved = resolveVariantMatch(raw, s, b, input.productName);
   if (resolved.variantIndex < 0) return false;
@@ -586,8 +615,9 @@ export async function decrementForOrderItem(input: {
   userId?: string;
   userName?: string;
   warehouseId?: string;
+  tenantId?: string;
 }): Promise<ProductMatch['product'] | null> {
-  const raw = await findProductBySkuOrBarcode(input.sku, input.barcode);
+  const raw = await findProductBySkuOrBarcode(input.sku, input.barcode, input.tenantId);
   if (!raw) return null;
   const match = resolveVariantMatch(raw, input.sku, input.barcode, input.productName);
   const qty = Math.max(1, Math.floor(Number(input.quantity) || 1));
@@ -616,6 +646,7 @@ export async function decrementForOrderItemIfNotApplied(input: {
   userId?: string;
   userName?: string;
   warehouseId?: string;
+  tenantId?: string;
 }): Promise<{ product: ProductMatch['product'] | null; skipped: boolean }> {
   const already = await orderLineStockAlreadyApplied({
     reference: input.reference,

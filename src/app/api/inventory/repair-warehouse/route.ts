@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { requireSession } from '@/lib/auth';
+import { tenantScope, belongsToTenant } from '@/lib/tenant';
+import { mergeTenant } from '@/lib/tenant-query';
 import {
   migrateOrphanVariantWarehouseRows,
   repairOrphanVariantWarehouseStockBatch,
@@ -13,14 +15,19 @@ import { findProductBySkuOrBarcode } from '@/lib/inventory';
 /** Yetim depo satırlarını onarır ve ürün stok toplamlarını yeniden hesaplar. */
 export async function POST(request: Request) {
   try {
-    const auth = requireSession(request, ['admin', 'operator']);
-    if (auth instanceof Response) return auth;
+    const session = requireSession(request, ['admin', 'operator']);
+    if (session instanceof NextResponse) return session;
 
     await connectToDatabase();
+    const { tenantId } = tenantScope(session);
     const body = (await request.json()) as { productId?: string; sku?: string; all?: boolean };
 
     if (body.all) {
-      const variantProducts = await Product.find({ hasVariants: true }).select('_id').lean();
+      const variantProducts = await Product.find(
+        mergeTenant(tenantId, { hasVariants: true })
+      )
+        .select('_id')
+        .lean();
       for (const p of variantProducts) {
         await migrateOrphanVariantWarehouseRows(String(p._id));
         await ensureAllVariantWarehouseRows(String(p._id));
@@ -37,7 +44,7 @@ export async function POST(request: Request) {
 
     let productId = String(body.productId ?? '').trim();
     if (!productId && body.sku) {
-      const match = await findProductBySkuOrBarcode(String(body.sku).trim(), undefined);
+      const match = await findProductBySkuOrBarcode(String(body.sku).trim(), undefined, tenantId);
       if (match?.product?._id) productId = String(match.product._id);
     }
 
@@ -46,6 +53,14 @@ export async function POST(request: Request) {
         { success: false, error: 'productId veya sku gerekli.' },
         { status: 400 }
       );
+    }
+
+    const owned = await Product.findById(productId).lean();
+    if (!owned) {
+      return NextResponse.json({ success: false, error: 'Ürün bulunamadı.' }, { status: 404 });
+    }
+    if (!belongsToTenant(session, owned.tenantId)) {
+      return NextResponse.json({ success: false, error: 'Yetkisiz.' }, { status: 403 });
     }
 
     await migrateOrphanVariantWarehouseRows(productId);

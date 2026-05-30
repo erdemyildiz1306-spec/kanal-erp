@@ -59,6 +59,7 @@ export async function logInvoiceActivity(
     detail: `${input.platform === 'web' ? 'Mağaza' : 'Trendyol'} fatura — ${input.orderNumber}${input.invoiceNumber ? ` (${input.invoiceNumber})` : ''}`,
     userId: session.userId,
     userName: session.name,
+    tenantId: session.tenantId,
     meta: {
       platform: input.platform,
       orderNumber: input.orderNumber,
