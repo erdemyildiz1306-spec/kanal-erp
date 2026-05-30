@@ -8,6 +8,8 @@ import MobileMoreSheet from "@/components/layout/MobileMoreSheet";
 import FcmBootstrap from "@/components/layout/FcmBootstrap";
 import NativeShellEnhancements from "@/components/layout/NativeShellEnhancements";
 import ImpersonationBanner from "@/components/root/ImpersonationBanner";
+import OrderAutoSync from "@/components/layout/OrderAutoSync";
+import OrderNotifyPoller from "@/components/layout/OrderNotifyPoller";
 import { ModuleSettingsProvider } from "@/components/providers/ModuleSettingsProvider";
 
 export default function ErpShell({ children }: { children: React.ReactNode }) {
@@ -33,6 +35,8 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ModuleSettingsProvider>
+    <OrderAutoSync />
+    <OrderNotifyPoller />
     <NativeShellEnhancements />
     <div className="flex h-[100dvh] overflow-hidden print:min-h-screen print:h-auto print:overflow-visible">
       <aside className="print:hidden hidden lg:flex h-full w-16 xl:w-52 shrink-0">

@@ -12,8 +12,6 @@ import {
   orderStockStatusLabel,
 } from "@/lib/order-refund-rules";
 import { isTrendyolDhlCargo } from "@/lib/trendyol-package-coalesce";
-import OrderAutoSync from "@/components/layout/OrderAutoSync";
-import OrderNotifyPoller from "@/components/layout/OrderNotifyPoller";
 import { triggerLabelPrint, prefersMobileLabelExport } from "@/lib/label-export";
 
 export default function OrdersPage() {
@@ -1164,8 +1162,6 @@ export default function OrdersPage() {
           </div>,
           document.body
         )}
-      <OrderAutoSync />
-      <OrderNotifyPoller />
     </div>
   );
 }

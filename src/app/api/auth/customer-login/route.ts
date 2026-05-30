@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import connectToDatabase from '@/lib/mongodb';
 import Customer from '@/models/Customer';
+import User from '@/models/User';
 import { createSessionToken, sessionCookieOptions } from '@/lib/auth';
 
 /** Toptan müşteri paneli girişi (ayrı oturum, role: customer) */
@@ -21,8 +22,15 @@ export async function POST(request: Request) {
 
     const customer = await Customer.findOne({ email });
     if (!customer || !customer.active) {
+      const staffUser = await User.findOne({ email }).select('_id').lean();
       return NextResponse.json(
-        { success: false, error: 'Geçersiz e-posta veya şifre.' },
+        {
+          success: false,
+          error: staffUser
+            ? 'Bu e-posta yönetici/personel hesabına ait. «Yönetici» sekmesinden giriş yapın.'
+            : 'Geçersiz e-posta veya şifre. Toptan müşteri hesabınız yönetici tarafından oluşturulur.',
+          hint: staffUser ? 'use_staff_login' : undefined,
+        },
         { status: 401 }
       );
     }

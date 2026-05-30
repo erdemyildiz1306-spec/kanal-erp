@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import connectToDatabase from '@/lib/mongodb';
 import User from '@/models/User';
+import Customer from '@/models/Customer';
 import {
   createSessionToken,
   sessionCookieOptions,
 } from '@/lib/auth';
-import { resolveSessionRole } from '@/lib/root-auth';
+import { resolveSessionRole, isRootEmail } from '@/lib/root-auth';
 import { assertTenantOperational, applyTrialToTenant } from '@/lib/tenant-license';
 import { ensureDefaultTenant } from '@/lib/tenant';
 import { checkRateLimit, clientIp } from '@/lib/rate-limit';
@@ -71,10 +72,36 @@ export async function POST(request: Request) {
       return res;
     }
 
-    const user = await User.findOne({ email });
+    const bootstrapPassword = String(process.env.ROOT_ADMIN_PASSWORD ?? '').trim();
+    const isRootBootstrap =
+      Boolean(bootstrapPassword) && isRootEmail(email) && password === bootstrapPassword;
+
+    let user = await User.findOne({ email });
+    if (!user && isRootBootstrap) {
+      await ensureDefaultTenant();
+      await applyTrialToTenant('default');
+      const passwordHash = await bcrypt.hash(password, 10);
+      user = await User.create({
+        email,
+        name: email.split('@')[0] || 'Root Admin',
+        passwordHash,
+        role: 'admin',
+        active: true,
+        tenantId: 'default',
+        signupSource: 'admin',
+      });
+    }
+
     if (!user) {
+      const customerExists = await Customer.findOne({ email }).select('_id').lean();
       return NextResponse.json(
-        { success: false, error: 'Geçersiz e-posta veya şifre.' },
+        {
+          success: false,
+          error: customerExists
+            ? 'Bu e-posta müşteri (portal) hesabına ait. «Müşteri (Portal)» sekmesinden giriş yapın.'
+            : 'Geçersiz e-posta veya şifre.',
+          hint: customerExists ? 'use_customer_login' : undefined,
+        },
         { status: 401 }
       );
     }
@@ -92,7 +119,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
+    let ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok && isRootBootstrap) {
+      user.passwordHash = await bcrypt.hash(password, 10);
+      await user.save();
+      ok = true;
+    }
     if (!ok) {
       return NextResponse.json(
         { success: false, error: 'Geçersiz e-posta veya şifre.' },

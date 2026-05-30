@@ -24,7 +24,13 @@ Vercel → Project → Settings → Environment Variables:
 | `AUTH_SESSION_SECRET` | Evet | Güçlü rastgele dize (min. 32 karakter) |
 | `STORE_WEBHOOK_SECRET` | Webhook varsa | Mağaza sipariş webhook doğrulama |
 | `NEXT_PUBLIC_APP_URL` | Önerilir | `https://erp-stok.vercel.app` |
-| `ROOT_ADMIN_EMAILS` | Root panel | Virgülle ayrılmış platform yönetici e-postaları (ör. `admin@example.com`) |
+| `ROOT_ADMIN_EMAILS` | Root panel | Virgülle ayrılmış platform yönetici e-postaları |
+| `ROOT_ADMIN_PASSWORD` | Root bootstrap | İlk giriş / şifre sıfırlama (yalnızca ROOT_ADMIN_EMAILS ile eşleşen hesap) |
+| `PLATFORM_BANK_NAME` | Lisans ödemesi | Havale banka adı |
+| `PLATFORM_ACCOUNT_HOLDER` | Lisans ödemesi | Hesap sahibi |
+| `PLATFORM_IBAN` | Lisans ödemesi | IBAN |
+| `LICENSE_STANDARD_MONTHLY` | Lisans | Standart paket aylık (TL) |
+| `LICENSE_EFATURA_MONTHLY` | Lisans | E-Faturam paketi aylık (TL) |
 | `RESEND_API_KEY` | E-posta varsa | Şifre sıfırlama e-postası |
 | `MAIL_FROM` | E-posta varsa | Gönderen adresi |
 
@@ -64,6 +70,16 @@ Production için MongoDB Atlas önerilir:
 4. Connection string'i `MONGODB_URI` olarak Vercel'e ekleyin
 
 Index'ler uygulama ilk çalıştığında Mongoose tarafından oluşturulur (`Order`, `Product`, `WarehouseStock`).
+
+## Trendyol sipariş senkronu (3 katman)
+
+Gün içinde gelen siparişler yalnızca günde 1 kez çekilmez:
+
+1. **Otomatik (panel açıkken)** — ERP'de oturum açıkken varsayılan **2 dakikada bir** Trendyol sipariş çekimi (`OrderAutoSync`). Aralık: Ayarlar → Trendyol → «Otomatik sync aralığı (dk)».
+2. **Webhook (anında)** — Trendyol webhook URL tanımlıysa sipariş anında düşer.
+3. **Vercel cron (yedek)** — Panel kapalıyken günde 1 kez (04:00) yedek senkron. Hobby planda cron günde en fazla 1 kez çalışabilir; asıl akış 1 ve 2 numaralı maddelerdir.
+
+Manuel «Trendyol'dan Çek» butonu her zaman kullanılabilir.
 
 ## Rollback
 

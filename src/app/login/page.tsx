@@ -144,13 +144,24 @@ function LoginForm() {
     clearMessages();
     try {
       const endpoint = mode === "customer" ? "/api/auth/customer-login" : "/api/auth/login";
+      const normalizedEmail = email.trim().toLowerCase();
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: normalizedEmail, password }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
+        if (data.hint === "use_staff_login" && mode === "customer") {
+          setMode("staff");
+          setError(data.error || "Yönetici sekmesine geçildi — tekrar deneyin.");
+          return;
+        }
+        if (data.hint === "use_customer_login" && mode === "staff") {
+          setMode("customer");
+          setError(data.error || "Müşteri sekmesine geçildi — tekrar deneyin.");
+          return;
+        }
         setError(data.error || "Giriş başarısız.");
         return;
       }
@@ -312,27 +323,39 @@ function LoginForm() {
               <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-[var(--erp-surface-2)]">
                 <button
                   type="button"
-                  onClick={() => setMode("staff")}
+                  onClick={() => {
+                    setMode("staff");
+                    clearMessages();
+                  }}
                   className={`erp-btn py-3 text-sm rounded-lg ${
                     mode === "staff"
                       ? "erp-btn-primary shadow-sm"
                       : "erp-btn-ghost border-0 bg-transparent"
                   }`}
                 >
-                  Yönetici
+                  Yönetici / Personel
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMode("customer")}
+                  onClick={() => {
+                    setMode("customer");
+                    clearMessages();
+                  }}
                   className={`erp-btn py-3 text-sm rounded-lg ${
                     mode === "customer"
                       ? "bg-violet-600 text-white shadow-sm"
                       : "erp-btn-ghost border-0 bg-transparent"
                   }`}
                 >
-                  Müşteri
+                  Müşteri (Portal)
                 </button>
               </div>
+
+              <p className="text-xs erp-muted leading-relaxed -mt-1">
+                {mode === "customer"
+                  ? "Toptan alım yapan müşteriler içindir. ERP paneline girmek için «Yönetici / Personel» seçin."
+                  : "ERP paneli, root panel ve ayarlar için bu sekme. Platform yöneticisi de buradan girer."}
+              </p>
 
               <form onSubmit={submitLogin} className="space-y-4">
                 <div className="space-y-2">
