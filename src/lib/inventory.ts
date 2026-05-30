@@ -187,6 +187,75 @@ export async function findProductBySkuOrBarcode(
   return null;
 }
 
+/** Barkod/SKU eşleşmesi — gevşek arama (rakam varyasyonları). */
+export async function findProductLoose(raw: string): Promise<ProductMatch | null> {
+  const code = String(raw ?? '').trim();
+  if (!code) return null;
+
+  const keys = barcodeLookupKeys(code);
+  const or: Record<string, unknown>[] = [];
+
+  for (const key of keys) {
+    or.push(
+      { barcode: key },
+      { 'variants.barcode': key },
+      { sku: key },
+      { 'variants.sku': key }
+    );
+  }
+
+  const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (/^\d+$/.test(code) && code.length >= 6) {
+    or.push(
+      { barcode: { $regex: `${escaped}$` } },
+      { 'variants.barcode': { $regex: `${escaped}$` } }
+    );
+  }
+
+  if (or.length === 0) return null;
+
+  const hit = await Product.findOne({ $or: or });
+  if (!hit) return null;
+
+  const variants = hit.variants ?? [];
+  let variantIndex = -1;
+  let matchedSku = String(hit.sku ?? '');
+  let matchedBarcode = String(hit.barcode ?? '');
+
+  for (let i = 0; i < variants.length; i++) {
+    const vb = String(variants[i]?.barcode ?? '').trim();
+    const vs = String(variants[i]?.sku ?? '').trim();
+    if (vb && barcodeLookupKeys(vb).some((k) => keys.includes(k))) {
+      variantIndex = i;
+      matchedSku = vs || matchedSku;
+      matchedBarcode = vb;
+      break;
+    }
+    if (vs && keys.includes(vs)) {
+      variantIndex = i;
+      matchedSku = vs;
+      matchedBarcode = vb || matchedBarcode;
+      break;
+    }
+  }
+
+  if (variantIndex < 0) {
+    const parentBc = String(hit.barcode ?? '').trim();
+    if (parentBc && barcodeLookupKeys(parentBc).some((k) => keys.includes(k))) {
+      matchedBarcode = parentBc;
+    } else if (keys.includes(String(hit.sku ?? '').trim())) {
+      matchedSku = String(hit.sku ?? '').trim();
+    }
+  }
+
+  return {
+    product: hit as ProductMatch['product'],
+    variantIndex,
+    matchedSku,
+    matchedBarcode,
+  };
+}
+
 /** Varyantlı üründe ana SKU ile eşleşince doğru beden/varyant satırını çöz. */
 export function resolveVariantMatch(
   match: ProductMatch,

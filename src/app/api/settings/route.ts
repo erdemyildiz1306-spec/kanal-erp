@@ -187,6 +187,30 @@ export async function PUT(request: Request) {
     if (data.printPackageContents !== undefined) {
       doc.set('printPackageContents', Boolean(data.printPackageContents));
     }
+    if (data.modulesEnabled !== undefined && data.modulesEnabled !== null) {
+      const raw = data.modulesEnabled as Record<string, unknown>;
+      const keys = [
+        'dashboard',
+        'products',
+        'scanner',
+        'warehouse',
+        'orders',
+        'finans',
+        'customers',
+        'invoices',
+        'trendyolInvoice',
+        'storeInvoice',
+        'cari',
+        'reports',
+        'activityLog',
+        'users',
+      ] as const;
+      for (const key of keys) {
+        if (typeof raw[key] === 'boolean') {
+          doc.set(`modulesEnabled.${key}`, raw[key]);
+        }
+      }
+    }
     if (data.companyLegalTitle !== undefined) {
       doc.set('companyLegalTitle', String(data.companyLegalTitle ?? ''));
     }

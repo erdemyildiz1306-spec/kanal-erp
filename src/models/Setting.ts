@@ -42,6 +42,24 @@ const SettingSchema = new mongoose.Schema({
   storeName: { type: String, default: 'Stok ERP' },
   printPackageContents: { type: Boolean, default: true },
 
+  /** Menüde görünen modüller — false = gizli */
+  modulesEnabled: {
+    dashboard: { type: Boolean, default: true },
+    products: { type: Boolean, default: true },
+    scanner: { type: Boolean, default: true },
+    warehouse: { type: Boolean, default: true },
+    orders: { type: Boolean, default: true },
+    finans: { type: Boolean, default: true },
+    customers: { type: Boolean, default: true },
+    invoices: { type: Boolean, default: true },
+    trendyolInvoice: { type: Boolean, default: true },
+    storeInvoice: { type: Boolean, default: true },
+    cari: { type: Boolean, default: true },
+    reports: { type: Boolean, default: true },
+    activityLog: { type: Boolean, default: true },
+    users: { type: Boolean, default: true },
+  },
+
   /** Fatura başlığı (ERP / e-Arşiv entegrasyonu için) */
   companyLegalTitle: { type: String, default: '' },
   companyTaxId: { type: String, default: '' },

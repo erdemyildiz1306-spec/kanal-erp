@@ -4,16 +4,11 @@ import { Bell, LogOut, Search, User } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import MobileSearchSheet from "@/components/layout/MobileSearchSheet";
+import MobileNotificationSheet, {
+  type NotificationItem,
+} from "@/components/layout/MobileNotificationSheet";
 
-type NotifItem = {
-  id: string;
-  title: string;
-  detail: string;
-  time: string;
-  kind: "order" | "stock" | "info" | "order-event";
-  read?: boolean;
-  url?: string;
-};
+type NotifItem = NotificationItem;
 
 type SearchHit = {
   products: Array<{ _id: string; name: string; sku: string; stock: number }>;
@@ -23,6 +18,7 @@ type SearchHit = {
 export default function Header() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [mobileNotifOpen, setMobileNotifOpen] = useState(false);
   const [mobileSearch, setMobileSearch] = useState(false);
   const [items, setItems] = useState<NotifItem[]>([]);
   const [unread, setUnread] = useState(0);
@@ -49,6 +45,7 @@ export default function Header() {
     if (n.url) {
       router.push(n.url);
       setOpen(false);
+      setMobileNotifOpen(false);
     }
     if (!n.read && n.kind !== "info") void markRead(n.id);
   };
@@ -302,6 +299,11 @@ export default function Header() {
               type="button"
               aria-label="Bildirimler"
               onClick={() => {
+                if (window.matchMedia("(max-width: 1023px)").matches) {
+                  setMobileNotifOpen(true);
+                  void load({ silent: true });
+                  return;
+                }
                 setOpen((v) => !v);
                 if (!open) void load({ silent: true });
               }}
@@ -315,7 +317,7 @@ export default function Header() {
               )}
             </button>
             {open && (
-              <div className="absolute right-0 mt-2 w-[min(22rem,calc(100vw-2rem))] max-h-[28rem] overflow-y-auto rounded-2xl border border-[var(--erp-border)] bg-[var(--erp-surface)] shadow-xl z-[100]">
+              <div className="hidden lg:block absolute right-0 mt-2 w-[min(22rem,calc(100vw-2rem))] max-h-[28rem] overflow-y-auto rounded-2xl border border-[var(--erp-border)] bg-[var(--erp-surface)] shadow-xl z-[100]">
                 <div className="px-4 py-3 border-b border-[var(--erp-border)] flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-[var(--erp-text)]">Bildirimler</span>
                   {unread > 0 ? (
@@ -358,7 +360,10 @@ export default function Header() {
                                 <button
                                   type="button"
                                   disabled={actionBusy === n.id}
-                                  onClick={() => void markRead(n.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void markRead(n.id);
+                                  }}
                                   className="text-[10px] px-2 py-1 rounded-md bg-[var(--erp-accent-soft)] text-[var(--erp-accent)] disabled:opacity-50"
                                 >
                                   Okundu
@@ -367,7 +372,10 @@ export default function Header() {
                               <button
                                 type="button"
                                 disabled={actionBusy === `del-${n.id}`}
-                                onClick={() => void deleteNotif(n.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void deleteNotif(n.id);
+                                }}
                                 className="text-[10px] px-2 py-1 rounded-md bg-red-500/10 text-red-600 disabled:opacity-50"
                               >
                                 Sil
@@ -404,6 +412,18 @@ export default function Header() {
       </header>
 
       <MobileSearchSheet open={mobileSearch} onClose={() => setMobileSearch(false)} />
+      <MobileNotificationSheet
+        open={mobileNotifOpen}
+        onClose={() => setMobileNotifOpen(false)}
+        items={items}
+        unread={unread}
+        loadStatus={loadStatus}
+        actionBusy={actionBusy}
+        onOpen={openNotif}
+        onMarkRead={(id) => void markRead(id)}
+        onMarkAllRead={() => void markAllRead()}
+        onDelete={(id) => void deleteNotif(id)}
+      />
     </>
   );
 }

@@ -6,6 +6,7 @@ import Header from "@/components/layout/Header";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import MobileMoreSheet from "@/components/layout/MobileMoreSheet";
 import FcmBootstrap from "@/components/layout/FcmBootstrap";
+import { ModuleSettingsProvider } from "@/components/providers/ModuleSettingsProvider";
 
 export default function ErpShell({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -19,6 +20,7 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
+    <ModuleSettingsProvider>
     <div className="flex h-[100dvh] overflow-hidden print:min-h-screen print:h-auto print:overflow-visible">
       <aside className="print:hidden hidden lg:flex h-full w-16 xl:w-52 shrink-0">
         <Sidebar />
@@ -37,5 +39,6 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
       <MobileBottomNav onOpenMore={() => setMoreOpen(true)} />
       <MobileMoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
     </div>
+    </ModuleSettingsProvider>
   );
 }

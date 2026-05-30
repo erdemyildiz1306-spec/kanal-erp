@@ -9,6 +9,13 @@ export type ScannedStockProduct = {
   price: number;
 };
 
+async function fetchLookup(params: URLSearchParams) {
+  const res = await fetch(`/api/inventory/adjust?${params.toString()}`, {
+    cache: "no-store",
+  });
+  return res.json();
+}
+
 export async function lookupStockProduct(
   rawCode: string
 ): Promise<
@@ -21,19 +28,36 @@ export async function lookupStockProduct(
   }
 
   const keys = barcodeLookupKeys(code);
-  const params = new URLSearchParams();
+
+  const barcodeParams = new URLSearchParams();
   for (const key of keys) {
-    params.append("barcode", key);
+    barcodeParams.append("barcode", key);
   }
-  params.set("sku", code);
-  const res = await fetch(`/api/inventory/adjust?${params.toString()}`);
-  const data = await res.json();
-
-  if (!data.success) {
-    return { success: false, error: data.error || "Ürün bulunamadı.", code };
+  let data = await fetchLookup(barcodeParams);
+  if (data.success) {
+    return { success: true, product: data.product as ScannedStockProduct, code };
   }
 
-  return { success: true, product: data.product as ScannedStockProduct, code };
+  const skuParams = new URLSearchParams();
+  skuParams.set("sku", code);
+  data = await fetchLookup(skuParams);
+  if (data.success) {
+    return { success: true, product: data.product as ScannedStockProduct, code };
+  }
+
+  const looseParams = new URLSearchParams();
+  looseParams.set("q", code);
+  for (const key of keys) looseParams.append("barcode", key);
+  data = await fetchLookup(looseParams);
+  if (data.success) {
+    return { success: true, product: data.product as ScannedStockProduct, code };
+  }
+
+  return {
+    success: false,
+    error: data.error || "Ürün bulunamadı. Barkodun ürün kartında kayıtlı olduğundan emin olun.",
+    code,
+  };
 }
 
 export async function applyStockDelta(input: {

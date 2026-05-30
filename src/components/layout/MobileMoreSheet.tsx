@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { secondaryNav, isNavActive } from "@/lib/navigation";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { useModuleSettings } from "@/components/providers/ModuleSettingsProvider";
 import { Moon, Sun, Monitor } from "lucide-react";
 
 type Props = {
@@ -15,6 +16,8 @@ type Props = {
 export default function MobileMoreSheet({ open, onClose }: Props) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { filterNav } = useModuleSettings();
+  const menuItems = filterNav(secondaryNav);
 
   if (!open) return null;
 
@@ -47,7 +50,7 @@ export default function MobileMoreSheet({ open, onClose }: Props) {
         </div>
 
         <div className="overflow-y-auto px-4 py-3 grid grid-cols-2 gap-2">
-          {secondaryNav.map((item) => {
+          {menuItems.map((item) => {
             const active = isNavActive(pathname, item.href);
             return (
               <Link

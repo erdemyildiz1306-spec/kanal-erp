@@ -546,11 +546,12 @@ export default function ProductsPage() {
     const q = params.get("q");
     const highlight = params.get("highlight");
     const isNew = params.get("new") === "1";
+    const barcodeParam = params.get("barcode")?.trim() ?? "";
     if (q || highlight) {
-      applyProductsSearch(q ?? "", highlight ?? undefined);
+      applyProductsSearch(q ?? barcodeParam, highlight ?? undefined);
       window.history.replaceState(null, "", "/products");
     } else if (isNew) {
-      openModalForNew();
+      openModalForNew(barcodeParam || undefined);
       window.history.replaceState(null, "", "/products");
     }
   }, [isClient]);
@@ -1085,7 +1086,7 @@ export default function ProductsPage() {
     }
   };
 
-  const openModalForNew = () => {
+  const openModalForNew = (prefillBarcode?: string) => {
     setEditingId(null);
     const firstLeaf = categoryLeaves[0];
     const hintPath = firstLeaf?.path || "";
@@ -1093,11 +1094,12 @@ export default function ProductsPage() {
       nameHint: "",
       categoryHint: hintPath,
     });
+    const scannedBarcode = String(prefillBarcode ?? "").trim();
     setProductData({
       name: "",
       description: "",
       sku: initialSku,
-      barcode: generateEan13(),
+      barcode: scannedBarcode || generateEan13(),
       costPrice: "",
       dimensionalWeight: "1",
       cargoFee: "",
@@ -1938,7 +1940,7 @@ export default function ProductsPage() {
             Seçilileri Sil ({selectedProductIds.size})
           </button>
           <button
-            onClick={openModalForNew}
+            onClick={() => openModalForNew()}
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
           >
             <Plus size={18} />

@@ -14,6 +14,7 @@ import {
 import { isTrendyolDhlCargo } from "@/lib/trendyol-package-coalesce";
 import OrderAutoSync from "@/components/layout/OrderAutoSync";
 import OrderNotifyPoller from "@/components/layout/OrderNotifyPoller";
+import { triggerLabelPrint, prefersMobileLabelExport } from "@/lib/label-export";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -72,10 +73,17 @@ export default function OrdersPage() {
     setMounted(true);
   }, []);
 
-  const triggerPrint = () => {
-    requestAnimationFrame(() => {
-      window.setTimeout(() => window.print(), 100);
-    });
+  const [printBusy, setPrintBusy] = useState(false);
+
+  const triggerPrint = async () => {
+    if (!selectedOrder) return;
+    setPrintBusy(true);
+    try {
+      const filename = `paket-${String(selectedOrder.orderNumber ?? selectedOrder._id ?? "etiket")}`;
+      await triggerLabelPrint("erp-print-label", filename);
+    } finally {
+      setPrintBusy(false);
+    }
   };
 
   const loadPrintSettings = useCallback(async () => {
@@ -1094,7 +1102,9 @@ export default function OrdersPage() {
               <div className="text-white">
                 <h3 className="font-bold text-lg">Paket çıktısı (PDF)</h3>
                 <p className="text-sm text-slate-300">
-                  A4 önizleme — Yazdır veya Ctrl+P
+                  {prefersMobileLabelExport()
+                    ? "PDF indir veya paylaş (mobil)"
+                    : "A4 önizleme — Yazdır veya Ctrl+P"}
                 </p>
               </div>
               <div className="flex space-x-3">
@@ -1107,11 +1117,16 @@ export default function OrdersPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={triggerPrint}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center shadow-sm"
+                  disabled={printBusy}
+                  onClick={() => void triggerPrint()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center shadow-sm disabled:opacity-60"
                 >
                   <Printer size={18} className="mr-2" />
-                  Yazdır
+                  {prefersMobileLabelExport()
+                    ? printBusy
+                      ? "Hazırlanıyor…"
+                      : "PDF İndir"
+                    : "Yazdır"}
                 </button>
               </div>
             </div>

@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { primaryNav, secondaryNav, isNavActive } from "@/lib/navigation";
+import { useModuleSettings } from "@/components/providers/ModuleSettingsProvider";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const menuItems = [...primaryNav, ...secondaryNav];
+  const { filterNav } = useModuleSettings();
+  const menuItems = [...filterNav(primaryNav), ...filterNav(secondaryNav)];
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--erp-sidebar)] text-[#e8e4df] border-r border-[#2f3832]">

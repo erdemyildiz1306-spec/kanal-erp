@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import Link from "next/link";
 import {
   Camera,
   Package,
@@ -239,19 +240,31 @@ export default function StockBarcodePanel({
               <p className="text-sm text-red-600 dark:text-red-400 mt-1">{lookupError}</p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <button type="button" onClick={resetScan} className="erp-btn erp-btn-ghost">
               Geri
             </button>
+            <Link
+              href={`/products?q=${encodeURIComponent(scanResult)}&barcode=${encodeURIComponent(scanResult)}`}
+              className="erp-btn erp-btn-secondary text-center"
+            >
+              Ürünlerde ara
+            </Link>
+            <Link
+              href={`/products?new=1&barcode=${encodeURIComponent(scanResult)}`}
+              className="erp-btn erp-btn-primary text-center"
+            >
+              Yeni ürün — barkodu kaydet
+            </Link>
             <button
               type="button"
               onClick={() => {
                 resetScan();
                 void openCamera();
               }}
-              className="erp-btn erp-btn-primary"
+              className="erp-btn erp-btn-ghost"
             >
-              Tekrar Tara
+              Tekrar tara
             </button>
           </div>
         </div>

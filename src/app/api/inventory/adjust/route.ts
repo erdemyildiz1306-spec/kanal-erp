@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
-import { findProductBySkuOrBarcode, adjustProductStock } from '@/lib/inventory';
+import { findProductBySkuOrBarcode, adjustProductStock, findProductLoose } from '@/lib/inventory';
 import { barcodeLookupKeys } from '@/lib/barcode-normalize';
 import { pushProductStockToChannels } from '@/lib/channel-sync';
 import { getSessionFromRequest } from '@/lib/auth';
@@ -29,8 +29,9 @@ export async function GET(request: Request) {
       .filter(Boolean);
     const barcode = barcodeList[0] ?? String(searchParams.get('barcode') ?? '').trim();
     const sku = String(searchParams.get('sku') ?? '').trim();
+    const looseQ = String(searchParams.get('q') ?? '').trim();
 
-    if (!barcode && !sku && barcodeList.length === 0) {
+    if (!barcode && !sku && barcodeList.length === 0 && !looseQ) {
       return NextResponse.json(
         { success: false, error: 'Barkod veya SKU gerekli.' },
         { status: 400 }
@@ -44,6 +45,9 @@ export async function GET(request: Request) {
     }
     if (!match && sku) {
       match = await resolveProductMatch(sku, '');
+    }
+    if (!match && looseQ) {
+      match = await findProductLoose(looseQ);
     }
     if (!match) {
       return NextResponse.json(

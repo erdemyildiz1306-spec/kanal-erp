@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { primaryNav, isNavActive } from "@/lib/navigation";
+import { useModuleSettings } from "@/components/providers/ModuleSettingsProvider";
 
 type Props = {
   onOpenMore: () => void;
@@ -11,6 +12,9 @@ type Props = {
 
 export default function MobileBottomNav({ onOpenMore }: Props) {
   const pathname = usePathname();
+  const { filterNav } = useModuleSettings();
+  const navItems = filterNav(primaryNav);
+  const colCount = navItems.length + 1;
 
   return (
       <nav
@@ -18,8 +22,11 @@ export default function MobileBottomNav({ onOpenMore }: Props) {
       style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
       aria-label="Ana menü"
     >
-      <div className="grid grid-cols-6 items-end px-0.5 pt-1">
-        {primaryNav.map((item) => {
+      <div
+        className="grid items-end px-0.5 pt-1"
+        style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}
+      >
+        {navItems.map((item) => {
           const active = isNavActive(pathname, item.href);
           const isScanner = item.href === "/scanner";
           return (

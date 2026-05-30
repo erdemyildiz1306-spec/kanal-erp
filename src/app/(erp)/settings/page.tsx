@@ -13,6 +13,7 @@ import {
   Download,
   TrendingUp,
   FileText,
+  LayoutGrid,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Spinner from "@/components/ui/Spinner";
@@ -25,6 +26,13 @@ import FinanceSettingsPanel, {
   type FinanceSettingsForm,
 } from "@/components/settings/FinanceSettingsPanel";
 import EfaturamSettingsPanel from "@/components/settings/EfaturamSettingsPanel";
+import {
+  DEFAULT_MODULES_ENABLED,
+  MODULE_LABELS,
+  normalizeModulesEnabled,
+  type ModuleKey,
+  type ModulesEnabled,
+} from "@/lib/module-settings";
 
 type SettingsPayload = {
   trendyolSellerId?: string;
@@ -74,6 +82,7 @@ type SettingsPayload = {
   efaturamInvoiceLinkTemplate?: string;
   efaturamDefaultVatRate?: number;
   efaturamAutoMarkInvoiced?: boolean;
+  modulesEnabled?: ModulesEnabled;
 };
 
 type IntegrationHints = {
@@ -294,6 +303,9 @@ export default function SettingsPage() {
     defaultFinanceSettingsForm
   );
   const [efaturamTesting, setEfaturamTesting] = useState(false);
+  const [modulesEnabled, setModulesEnabled] = useState<ModulesEnabled>(
+    DEFAULT_MODULES_ENABLED
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -415,6 +427,7 @@ export default function SettingsPage() {
       };
       setIntegration(next);
       setFinanceForm(financeSettingsFromApi(s));
+      setModulesEnabled(normalizeModulesEnabled(s.modulesEnabled));
       persistPublicSettings(next);
       const ih = data.integrationHints as IntegrationHints | undefined;
       if (ih) setHints(ih);
@@ -546,6 +559,7 @@ export default function SettingsPage() {
       payload.efaturamAutoMarkInvoiced = integration.efaturamAutoMarkInvoiced !== false;
 
       Object.assign(payload, financeSettingsToPayload(financeForm));
+      payload.modulesEnabled = modulesEnabled;
 
       const res = await fetch("/api/settings?t=" + Date.now(), {
         method: "PUT",
@@ -575,6 +589,7 @@ export default function SettingsPage() {
       if (data.integrationHints) {
         setHints(data.integrationHints);
       }
+      window.dispatchEvent(new CustomEvent("erp-settings-updated"));
       const saved = data.saved;
       setIntegration((prev) => {
         const next: SettingsPayload = {
@@ -649,6 +664,7 @@ export default function SettingsPage() {
     { id: "finans", name: "Finans & Kargo", shortName: "Finans", subtitle: "Simülatör ve desi", icon: TrendingUp, color: "text-emerald-600 bg-emerald-50" },
     { id: "web", name: "Next.js Mağaza API", shortName: "Mağaza API", subtitle: "Web entegrasyonu", icon: LinkIcon, color: "text-indigo-600 bg-indigo-50" },
     { id: "print", name: "Etiket & Çıktı", shortName: "Etiket", subtitle: "Yazdırma", icon: Printer, color: "text-purple-600 bg-purple-50" },
+    { id: "modules", name: "Modüller", shortName: "Modüller", subtitle: "Menü aç/kapat", icon: LayoutGrid, color: "text-teal-600 bg-teal-50" },
   ];
 
   const toggleMobileTab = (id: string) => {
@@ -1383,6 +1399,40 @@ export default function SettingsPage() {
                   <span className="block text-xs text-slate-400">Etiket çıktısında miktar özeti görünsün.</span>
                 </div>
               </label>
+            </div>
+          )}
+
+          {activeTab === "modules" && (
+            <div className="space-y-6">
+              <div className="border-b border-slate-100 pb-4">
+                <h3 className="text-lg font-bold text-slate-900">Modül görünürlüğü</h3>
+                <p className="text-sm text-slate-500">
+                  Kapatılan modüller sol menü, alt menü ve mobil «Menü» listesinden gizlenir. Ayarlar her zaman görünür kalır.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(Object.keys(MODULE_LABELS) as ModuleKey[]).map((key) => (
+                  <label
+                    key={key}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 cursor-pointer hover:bg-slate-50"
+                  >
+                    <span className="text-sm font-semibold text-slate-800">
+                      {MODULE_LABELS[key]}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={modulesEnabled[key] !== false}
+                      onChange={(e) =>
+                        setModulesEnabled((prev) => ({
+                          ...prev,
+                          [key]: e.target.checked,
+                        }))
+                      }
+                      className="w-5 h-5 text-teal-600 border-slate-300 rounded focus:ring-teal-500"
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
           )}
 

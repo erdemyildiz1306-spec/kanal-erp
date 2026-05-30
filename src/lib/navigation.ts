@@ -16,32 +16,35 @@ import {
   Store,
   type LucideIcon,
 } from "lucide-react";
+import type { ModuleKey } from "@/lib/module-settings";
 
 export type NavItem = {
   name: string;
   href: string;
   icon: LucideIcon;
   shortLabel?: string;
+  /** Ayarlardan kapatılabilir; tanımsız = her zaman görünür */
+  moduleKey?: ModuleKey;
 };
 
 export const primaryNav: NavItem[] = [
-  { name: "Özet", shortLabel: "Ana", href: "/", icon: LayoutDashboard },
-  { name: "Ürünler", shortLabel: "Ürün", href: "/products", icon: Package },
-  { name: "Barkod", shortLabel: "Barkod", href: "/scanner", icon: ScanBarcode },
-  { name: "Depo", shortLabel: "Depo", href: "/warehouse", icon: Warehouse },
-  { name: "Siparişler", shortLabel: "Sipariş", href: "/orders", icon: ShoppingCart },
+  { name: "Özet", shortLabel: "Ana", href: "/", icon: LayoutDashboard, moduleKey: "dashboard" },
+  { name: "Ürünler", shortLabel: "Ürün", href: "/products", icon: Package, moduleKey: "products" },
+  { name: "Barkod", shortLabel: "Barkod", href: "/scanner", icon: ScanBarcode, moduleKey: "scanner" },
+  { name: "Depo", shortLabel: "Depo", href: "/warehouse", icon: Warehouse, moduleKey: "warehouse" },
+  { name: "Siparişler", shortLabel: "Sipariş", href: "/orders", icon: ShoppingCart, moduleKey: "orders" },
 ];
 
 export const secondaryNav: NavItem[] = [
-  { name: "Finans & Kâr", href: "/finans", icon: LineChart },
-  { name: "Müşteriler", href: "/customers", icon: UserCircle },
-  { name: "Fatura & KDV", href: "/invoices", icon: Receipt },
-  { name: "Trendyol Fatura", href: "/invoices/trendyol", icon: FileText },
-  { name: "Mağaza Fatura", href: "/invoices/store", icon: Store },
-  { name: "Cari & Kasa", href: "/cari", icon: Wallet },
-  { name: "Raporlar", href: "/reports", icon: BarChart3 },
-  { name: "İşlem Günlüğü", href: "/activity-log", icon: ClipboardList },
-  { name: "Kullanıcılar", href: "/users", icon: Users },
+  { name: "Finans & Kâr", href: "/finans", icon: LineChart, moduleKey: "finans" },
+  { name: "Müşteriler", href: "/customers", icon: UserCircle, moduleKey: "customers" },
+  { name: "Fatura & KDV", href: "/invoices", icon: Receipt, moduleKey: "invoices" },
+  { name: "Trendyol Fatura", href: "/invoices/trendyol", icon: FileText, moduleKey: "trendyolInvoice" },
+  { name: "Mağaza Fatura", href: "/invoices/store", icon: Store, moduleKey: "storeInvoice" },
+  { name: "Cari & Kasa", href: "/cari", icon: Wallet, moduleKey: "cari" },
+  { name: "Raporlar", href: "/reports", icon: BarChart3, moduleKey: "reports" },
+  { name: "İşlem Günlüğü", href: "/activity-log", icon: ClipboardList, moduleKey: "activityLog" },
+  { name: "Kullanıcılar", href: "/users", icon: Users, moduleKey: "users" },
   { name: "Ayarlar", href: "/settings", icon: Settings },
 ];
 
