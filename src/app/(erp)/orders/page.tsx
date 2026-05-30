@@ -80,7 +80,7 @@ export default function OrdersPage() {
     setPrintBusy(true);
     try {
       const filename = `paket-${String(selectedOrder.orderNumber ?? selectedOrder._id ?? "etiket")}`;
-      await triggerLabelPrint("erp-print-label", filename);
+      await triggerLabelPrint("erp-print-label", filename, String(selectedOrder._id ?? ""));
     } finally {
       setPrintBusy(false);
     }
@@ -604,7 +604,11 @@ export default function OrdersPage() {
           </div>
           <div className="relative w-full">
             <input
-              type="search"
+              type="text"
+              inputMode="search"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="Sipariş no veya müşteri ara..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}

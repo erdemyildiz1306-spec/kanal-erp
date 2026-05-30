@@ -19,6 +19,16 @@ export default function ErpShell({ children }: { children: React.ReactNode }) {
       .catch(() => setSessionReady(false));
   }, []);
 
+  useEffect(() => {
+    void import("@capacitor/core")
+      .then(({ Capacitor }) => {
+        if (Capacitor.isNativePlatform()) {
+          document.documentElement.classList.add("cap-native");
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <ModuleSettingsProvider>
     <div className="flex h-[100dvh] overflow-hidden print:min-h-screen print:h-auto print:overflow-visible">

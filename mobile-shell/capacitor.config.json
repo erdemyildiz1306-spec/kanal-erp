@@ -12,7 +12,7 @@
     "allowMixedContent": false,
     "backgroundColor": "#f4f2ee",
     "webContentsDebuggingEnabled": false,
-    "captureInput": true,
+    "captureInput": false,
     "useLegacyBridge": false
   },
   "plugins": {

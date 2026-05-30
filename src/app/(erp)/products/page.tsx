@@ -2082,7 +2082,11 @@ export default function ProductsPage() {
         <div className="flex flex-col gap-4 mb-4">
           <div className="relative w-full">
             <input
-              type="search"
+              type="text"
+              inputMode="search"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="Ürün adı, SKU veya barkod ara..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -2676,7 +2680,10 @@ export default function ProductsPage() {
                       className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
                     />
                     <input
-                      type="search"
+                      type="text"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
                       value={categorySearch}
                       onChange={(e) => {
                         setCategorySearch(e.target.value);
@@ -2695,7 +2702,6 @@ export default function ProductsPage() {
                       }}
                       placeholder="Yazın: elbise, çocuk tişört, bebek body, kız çocuk…"
                       className="w-full pl-9 pr-4 py-2.5 border border-orange-200 rounded-lg outline-none text-sm focus:ring-2 focus:ring-orange-400 bg-white"
-                      autoComplete="off"
                     />
                     {categorySearchOpen && categorySearch.trim() ? (
                       <ul

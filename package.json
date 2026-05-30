@@ -17,6 +17,7 @@
     "@zxing/library": "^0.22.0",
     "axios": "^1.16.1",
     "bcryptjs": "^3.0.3",
+    "bwip-js": "^4.11.1",
     "chart.js": "^4.5.1",
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",

@@ -47,6 +47,21 @@ for (const line of permissions) {
   console.log("Eklendi:", key);
 }
 
+const activitySoftInput =
+  'android:windowSoftInputMode="adjustResize|stateHidden"';
+if (xml.includes("<activity") && !xml.includes("windowSoftInputMode")) {
+  xml = xml.replace(/<activity\b/, `<activity ${activitySoftInput} `);
+  changed = true;
+  console.log("Activity windowSoftInputMode eklendi.");
+} else if (xml.includes('windowSoftInputMode="adjustPan"')) {
+  xml = xml.replace(
+    /android:windowSoftInputMode="adjustPan"/g,
+    'android:windowSoftInputMode="adjustResize|stateHidden"'
+  );
+  changed = true;
+  console.log("Activity windowSoftInputMode adjustResize yapildi.");
+}
+
 if (changed) {
   fs.writeFileSync(manifestPath, xml, "utf8");
   console.log("AndroidManifest güncellendi.");

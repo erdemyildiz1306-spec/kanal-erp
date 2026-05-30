@@ -105,12 +105,42 @@ body {
   background: var(--erp-surface);
   color: var(--erp-text);
   font-size: 1rem;
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: manipulation;
 }
 
 .erp-input:focus {
   outline: none;
   border-color: var(--erp-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--erp-accent) 25%, transparent);
+  box-shadow: 0 0 0 3px rgba(74, 93, 69, 0.28);
+}
+
+.dark .erp-input:focus {
+  box-shadow: 0 0 0 3px rgba(156, 184, 154, 0.35);
+}
+
+/** Capacitor APK WebView — klavye silme / IME uyumu */
+html.cap-native .erp-input,
+html.cap-native textarea,
+html.cap-native select {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-text-fill-color: var(--erp-text) !important;
+  caret-color: var(--erp-text);
+  touch-action: manipulation;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+html.cap-native .erp-input:focus,
+html.cap-native textarea:focus {
+  box-shadow: 0 0 0 3px rgba(74, 93, 69, 0.28) !important;
+}
+
+html.cap-native.dark .erp-input:focus,
+html.cap-native.dark textarea:focus {
+  box-shadow: 0 0 0 3px rgba(156, 184, 154, 0.35) !important;
 }
 
 @supports not (color: color-mix(in srgb, white, black)) {

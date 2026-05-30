@@ -93,8 +93,11 @@ export default function MobileSearchSheet({ open, onClose }: Props) {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--erp-text-muted)]" size={20} />
             <input
               ref={inputRef}
-              type="search"
-              enterKeyHint="search"
+              type="text"
+              inputMode="search"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Ürün, SKU, barkod veya sipariş..."

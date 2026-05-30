@@ -43,7 +43,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://erp-stok.vercel.app" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var k='kanal-erp-theme',t=localStorage.getItem(k),d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();`,
+            __html: `(function(){try{var k='kanal-erp-theme',t=localStorage.getItem(k),d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';var cap=window.Capacitor;if(cap&&cap.isNativePlatform&&cap.isNativePlatform()){document.documentElement.classList.add('cap-native');}}catch(e){}})();`,
           }}
         />
       </head>
