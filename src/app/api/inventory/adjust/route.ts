@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Product from '@/models/Product';
-import { findProductBySkuOrBarcode, adjustProductStock, findProductLoose } from '@/lib/inventory';
+import { findProductBySkuOrBarcode, adjustProductStock, findProductByScannedCode } from '@/lib/inventory';
 import { barcodeLookupKeys } from '@/lib/barcode-normalize';
 import { pushProductStockToChannels } from '@/lib/channel-sync';
 import { getSessionFromRequest } from '@/lib/auth';
@@ -47,7 +47,14 @@ export async function GET(request: Request) {
       match = await resolveProductMatch(sku, '');
     }
     if (!match && looseQ) {
-      match = await findProductLoose(looseQ);
+      match = await findProductByScannedCode(looseQ);
+    }
+    if (!match) {
+      const scanCode =
+        barcodeList[0] || barcode || sku || looseQ;
+      if (scanCode) {
+        match = await findProductByScannedCode(scanCode);
+      }
     }
     if (!match) {
       return NextResponse.json(
@@ -105,7 +112,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const match = await resolveProductMatch(sku, barcode);
+    let match = await resolveProductMatch(sku, barcode);
+    if (!match) {
+      match = await findProductByScannedCode(barcode || sku);
+    }
     if (!match) {
       return NextResponse.json(
         { success: false, error: 'Ürün bulunamadı.' },

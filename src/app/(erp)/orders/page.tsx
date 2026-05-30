@@ -1103,7 +1103,7 @@ export default function OrdersPage() {
                 <h3 className="font-bold text-lg">Paket çıktısı (PDF)</h3>
                 <p className="text-sm text-slate-300">
                   {prefersMobileLabelExport()
-                    ? "PDF indir veya paylaş (mobil)"
+                    ? "PDF oluştur — paylaş veya yazıcı uygulamasından yazdır"
                     : "A4 önizleme — Yazdır veya Ctrl+P"}
                 </p>
               </div>
@@ -1125,7 +1125,7 @@ export default function OrdersPage() {
                   {prefersMobileLabelExport()
                     ? printBusy
                       ? "Hazırlanıyor…"
-                      : "PDF İndir"
+                      : "Yazdır / PDF"
                     : "Yazdır"}
                 </button>
               </div>

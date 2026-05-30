@@ -378,7 +378,13 @@ body {
 @media print {
   @page {
     size: A4;
-    margin: 10mm;
+    margin: 8mm;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   body * {

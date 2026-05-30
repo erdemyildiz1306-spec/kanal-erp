@@ -12,6 +12,7 @@ export type ScannedStockProduct = {
 async function fetchLookup(params: URLSearchParams) {
   const res = await fetch(`/api/inventory/adjust?${params.toString()}`, {
     cache: "no-store",
+    credentials: "include",
   });
   return res.json();
 }
@@ -27,35 +28,30 @@ export async function lookupStockProduct(
     return { success: false, error: "Geçersiz barkod.", code: "" };
   }
 
-  const keys = barcodeLookupKeys(code);
-
-  const barcodeParams = new URLSearchParams();
-  for (const key of keys) {
-    barcodeParams.append("barcode", key);
+  const params = new URLSearchParams();
+  params.set("q", code);
+  for (const key of barcodeLookupKeys(code)) {
+    params.append("barcode", key);
   }
-  let data = await fetchLookup(barcodeParams);
+
+  const data = await fetchLookup(params);
   if (data.success) {
     return { success: true, product: data.product as ScannedStockProduct, code };
   }
 
   const skuParams = new URLSearchParams();
+  skuParams.set("q", code);
   skuParams.set("sku", code);
-  data = await fetchLookup(skuParams);
-  if (data.success) {
-    return { success: true, product: data.product as ScannedStockProduct, code };
-  }
-
-  const looseParams = new URLSearchParams();
-  looseParams.set("q", code);
-  for (const key of keys) looseParams.append("barcode", key);
-  data = await fetchLookup(looseParams);
-  if (data.success) {
-    return { success: true, product: data.product as ScannedStockProduct, code };
+  const skuData = await fetchLookup(skuParams);
+  if (skuData.success) {
+    return { success: true, product: skuData.product as ScannedStockProduct, code };
   }
 
   return {
     success: false,
-    error: data.error || "Ürün bulunamadı. Barkodun ürün kartında kayıtlı olduğundan emin olun.",
+    error:
+      data.error ||
+      "Ürün bulunamadı. Ürün kartında barkod alanının dolu olduğundan emin olun.",
     code,
   };
 }
@@ -75,6 +71,7 @@ export async function applyStockDelta(input: {
   const res = await fetch("/api/inventory/adjust", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({
       barcode: input.barcode,
       sku: input.sku,

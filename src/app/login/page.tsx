@@ -5,14 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Download,
   Smartphone,
-  Moon,
-  Sun,
   LogIn,
   UserPlus,
   KeyRound,
   ArrowLeft,
 } from "lucide-react";
-import { useTheme } from "@/components/providers/ThemeProvider";
 
 type LoginMode = "staff" | "customer";
 type AuthView = "login" | "register" | "forgot" | "reset";
@@ -44,7 +41,6 @@ function AuthMessage({
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { resolved, toggle } = useTheme();
   const next = searchParams.get("next") || "/";
   const resetTokenFromUrl = searchParams.get("resetToken") || "";
 
@@ -278,14 +274,6 @@ function LoginForm() {
           </p>
           <h1 className="text-lg font-bold text-[var(--erp-text)]">{title}</h1>
         </div>
-        <button
-          type="button"
-          onClick={toggle}
-          className="touch-target-sm rounded-xl border border-[var(--erp-border)] bg-[var(--erp-surface)] flex items-center justify-center"
-          aria-label="Tema değiştir"
-        >
-          {resolved === "dark" ? <Sun size={20} /> : <Moon size={20} />}
-        </button>
       </header>
 
       <main className="flex-1 w-full max-w-md mx-auto px-4 py-5 space-y-4">

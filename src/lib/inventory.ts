@@ -187,6 +187,46 @@ export async function findProductBySkuOrBarcode(
   return null;
 }
 
+/** Barkod okuyucu — tüm eşleştirme yollarını sırayla dener */
+export async function findProductByScannedCode(raw: string): Promise<ProductMatch | null> {
+  const code = String(raw ?? '').trim();
+  if (!code) return null;
+
+  const normalized = code.replace(/\s+/g, '');
+
+  let match = await findProductBySkuOrBarcode(undefined, normalized);
+  if (match) return match;
+
+  match = await findProductBySkuOrBarcode(normalized, undefined);
+  if (match) return match;
+
+  match = await findProductBySkuOrBarcode(normalized, normalized);
+  if (match) return match;
+
+  match = await findProductLoose(normalized);
+  if (match) return match;
+
+  const digits = normalized.replace(/\D/g, '');
+  if (digits && digits !== normalized) {
+    match = await findProductBySkuOrBarcode(undefined, digits);
+    if (match) return match;
+    match = await findProductLoose(digits);
+    if (match) return match;
+  }
+
+  if (digits.length >= 8) {
+    for (const len of [13, 12, 8]) {
+      if (digits.length >= len) {
+        const tail = digits.slice(-len);
+        match = await findProductLoose(tail);
+        if (match) return match;
+      }
+    }
+  }
+
+  return null;
+}
+
 /** Barkod/SKU eşleşmesi — gevşek arama (rakam varyasyonları). */
 export async function findProductLoose(raw: string): Promise<ProductMatch | null> {
   const code = String(raw ?? '').trim();

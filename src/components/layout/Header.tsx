@@ -1,12 +1,13 @@
 "use client";
 
-import { Bell, LogOut, Search, User } from "lucide-react";
+import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import MobileSearchSheet from "@/components/layout/MobileSearchSheet";
 import MobileNotificationSheet, {
   type NotificationItem,
 } from "@/components/layout/MobileNotificationSheet";
+import { useTheme } from "@/components/providers/ThemeProvider";
 
 type NotifItem = NotificationItem;
 
@@ -17,6 +18,7 @@ type SearchHit = {
 
 export default function Header() {
   const router = useRouter();
+  const { resolved, toggle } = useTheme();
   const [open, setOpen] = useState(false);
   const [mobileNotifOpen, setMobileNotifOpen] = useState(false);
   const [mobileSearch, setMobileSearch] = useState(false);
@@ -400,6 +402,15 @@ export default function Header() {
               <p className="text-xs erp-muted">{me?.role ?? "Panel"}</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={toggle}
+            title={resolved === "dark" ? "Açık tema" : "Koyu tema"}
+            aria-label="Tema değiştir"
+            className="touch-target-sm rounded-xl border border-[var(--erp-border)] bg-[var(--erp-surface)] flex items-center justify-center"
+          >
+            {resolved === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
           <button
             type="button"
             onClick={() => void logout()}

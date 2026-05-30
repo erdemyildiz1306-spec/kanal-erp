@@ -97,7 +97,10 @@ export default function PrintableLabel({ order, settings }: PrintableLabelProps)
   const items = Array.isArray(order.items) ? order.items : [];
 
   return (
-    <div className="w-[210mm] min-h-[297mm] p-[10mm] bg-white text-black font-sans box-border print:p-[8mm]">
+    <div
+      className="w-[210mm] min-h-[297mm] p-[10mm] bg-white text-black font-sans box-border print:p-[8mm]"
+      style={{ backgroundColor: "#ffffff", color: "#000000" }}
+    >
       <div className="max-w-[190mm] mx-auto space-y-5">
         <div className="flex justify-between items-start border-b-2 border-slate-900 pb-3">
           <div>
